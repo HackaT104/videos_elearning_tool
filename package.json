@@ -30,6 +30,8 @@
     "@cvs/themes": "workspace:*",
     "@cvs/tts": "workspace:*",
     "@types/node": "^22.18.0",
+    "@types/react": "19.1.12",
+    "@types/react-dom": "19.1.9",
     "concurrently": "^9.2.1",
     "cross-env": "^10.0.0",
     "docx": "^9.5.1",

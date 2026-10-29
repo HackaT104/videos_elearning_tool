@@ -8,3 +8,4 @@ export * from "./scene";
 export * from "./design";
 export * from "./engine";
 export * from "./script-md";
+export * from "./layout-probe";
