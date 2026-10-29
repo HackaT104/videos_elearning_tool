@@ -4,6 +4,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { claimNextJob, getDb, getJob, getProject, paths, requeueStale, STORAGE, updateJob, type Job } from "@cvs/db";
+import { startApi } from "./api";
 import { aiWriteScript, JOB_STEPS, makeCustomScene, reviseWithNote, runSteps, Stopped, STEP_LABELS, stylePreview, voiceSamples, type Ctx, type StepName } from "@cvs/studio";
 
 const MAX = Number(process.env.CVS_WORKER_CONCURRENCY ?? 4);
@@ -117,4 +118,5 @@ async function loop() {
 }
 
 void paths;
+if (process.env.CVS_NO_API !== "1") startApi();
 loop();

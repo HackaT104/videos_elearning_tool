@@ -2,7 +2,8 @@
 import { readFileSync } from "node:fs";
 import type { Browser } from "playwright";
 
-export async function contactSheet(frames: { file: string; label?: string }[], out: string, browser: Browser, cols = 3, w = 640) {
+export async function contactSheet(frames: { file: string; label?: string }[], out: string, browser: Browser, maxCols = 3, w = 640) {
+  const cols = Math.max(1, Math.min(maxCols, frames.length));
   const h = Math.round((w * 9) / 16);
   const rows = Math.ceil(frames.length / cols);
   const page = await browser.newPage({ viewport: { width: cols * w, height: rows * (h + 34) } });

@@ -162,6 +162,7 @@ export function setVideoFlags(project_id: string, key: string, f: Partial<{ incl
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const [k, v] of Object.entries(f)) {
+    if (v === undefined) continue;
     sets.push(`${k}=?`);
     vals.push(typeof v === "boolean" ? (v ? 1 : 0) : v);
   }
@@ -205,6 +206,7 @@ export function updateJob(id: number, patch: Partial<Pick<Job, "status" | "step"
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
     sets.push(`${k}=?`);
     vals.push(k === "result" ? JSON.stringify(v) : v);
   }

@@ -11,6 +11,12 @@
     "@cvs/core": "workspace:*",
     "@cvs/db": "workspace:*",
     "@cvs/studio": "workspace:*",
-    "tsx": "^4.20.5"
+    "@hono/node-server": "1.19.4",
+    "hono": "4.9.8",
+    "tsx": "^4.20.5",
+    "@cvs/ai": "workspace:*",
+    "@cvs/engine": "workspace:*",
+    "@cvs/tts": "workspace:*",
+    "@cvs/themes": "workspace:*"
   }
 }
