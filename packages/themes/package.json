@@ -1,0 +1,10 @@
+{
+  "name": "@cvs/themes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {"@fontsource/montserrat":"^5.2.5","@fontsource/inter":"^5.2.5","@fontsource/lora":"^5.2.5","@fontsource/nunito":"^5.2.5","@fontsource/be-vietnam-pro":"^5.2.5","@fontsource/patrick-hand":"^5.2.5","fontkit":"^2.0.4"}
+}

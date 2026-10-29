@@ -1,0 +1,35 @@
+{
+  "name": "course-video-studio",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Course Video Studio – tạo video e-learning tự động từ Word/Excel",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n web,worker -c blue,green \"pnpm --filter @cvs/web dev\" \"pnpm --filter @cvs/worker dev\"",
+    "start": "concurrently -n web,worker -c blue,green \"pnpm --filter @cvs/web start\" \"pnpm --filter @cvs/worker start\"",
+    "build": "pnpm --filter @cvs/web build",
+    "test": "vitest run",
+    "test:render": "cross-env CVS_RENDER_TESTS=1 vitest run tests/render",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "fixtures": "tsx scripts/make-fixtures.ts",
+    "fonts:check": "tsx scripts/check-fonts.ts",
+    "demo": "tsx scripts/demo.ts",
+    "setup": "tsx scripts/setup.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.0.0",
+    "docx": "^9.5.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  },
+  "type": "module"
+}

@@ -1,0 +1,11 @@
+node_modules/
+.next/
+dist/
+storage/*
+!storage/.gitkeep
+.env
+*.log
+.turbo/
+coverage/
+tests/.out/
+packages/engine-rmt/.bundle/
