@@ -5,6 +5,16 @@
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": {"@cvs/core":"workspace:*","@cvs/engine":"workspace:*","@cvs/themes":"workspace:*","@cvs/tts":"workspace:*","gsap":"^3.13.0","playwright":"1.63.0"}
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cvs/core": "workspace:*",
+    "@cvs/engine": "workspace:*",
+    "@cvs/themes": "workspace:*",
+    "@cvs/tts": "workspace:*",
+    "gsap": "^3.13.0",
+    "hyperframes": "0.8.214",
+    "playwright": "1.63.0"
+  }
 }
