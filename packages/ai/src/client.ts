@@ -1,0 +1,100 @@
+// Gọi Claude API (Anthropic SDK). Khóa lấy từ ANTHROPIC_API_KEY trong .env.
+// Mặc định claude-opus-5-5, thinking adaptive, streaming; bật fallbacks phía máy chủ khi bị từ chối (refusal).
+
+import Anthropic from "@anthropic-ai/sdk";
+
+export const DEFAULT_MODEL = process.env.CVS_CLAUDE_MODEL || "claude-opus-5-5";
+
+let client: Anthropic | null = null;
+export function claude(): Anthropic {
+  if (!client) client = new Anthropic();
+  return client;
+}
+
+export function aiAvailable(): boolean {
+  return !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+}
+
+export class AiError extends Error {}
+
+export type AskOptions = {
+  system: string;
+  content: Anthropic.Beta.BetaContentBlockParam[] | string;
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  maxTokens?: number;
+  model?: string;
+};
+
+/** Một lượt hỏi – trả về văn bản cuối (streaming để tránh timeout với đầu ra dài). */
+export async function ask(o: AskOptions): Promise<string> {
+  const c = claude();
+  try {
+    const stream = c.beta.messages.stream({
+      model: o.model ?? DEFAULT_MODEL,
+      max_tokens: o.maxTokens ?? 32000,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      thinking: { type: "adaptive" },
+      output_config: { effort: o.effort ?? "high" },
+      system: [{ type: "text", text: o.system, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: o.content }],
+    });
+    const msg = await stream.finalMessage();
+    if (msg.stop_reason === "refusal") throw new AiError(`Claude từ chối yêu cầu (${msg.stop_details?.category ?? "không rõ"})`);
+    if (msg.stop_reason === "max_tokens") throw new AiError("Câu trả lời của Claude bị cắt (max_tokens)");
+    return msg.content
+      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n");
+  } catch (e) {
+    if (e instanceof Anthropic.AuthenticationError) throw new AiError("Khóa ANTHROPIC_API_KEY không hợp lệ – kiểm tra file .env");
+    if (e instanceof Anthropic.RateLimitError) throw new AiError("Claude API đang giới hạn tốc độ – thử lại sau ít phút");
+    if (e instanceof Anthropic.APIConnectionError) throw new AiError("Không kết nối được Claude API – kiểm tra mạng");
+    if (e instanceof Anthropic.APIError) throw new AiError(`Claude API lỗi ${e.status}: ${e.message}`);
+    throw e;
+  }
+}
+
+/** Lấy khối JSON đầu tiên trong câu trả lời (có thể nằm trong ```json … ```). */
+export function extractJson<T>(text: string): T {
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const raw = fence ? fence[1] : text;
+  const start = raw.search(/[{[]/);
+  if (start < 0) throw new AiError("Claude không trả về JSON");
+  const open = raw[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let str = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (str) {
+      if (ch === "\\") i++;
+      else if (ch === '"') str = false;
+      continue;
+    }
+    if (ch === '"') str = true;
+    else if (ch === open) depth++;
+    else if (ch === close && --depth === 0) return JSON.parse(raw.slice(start, i + 1)) as T;
+  }
+  throw new AiError("JSON của Claude không đóng ngoặc");
+}
+
+/** Hỏi và parse JSON; nếu validate trả lỗi thì gửi lại kèm lỗi (tối đa `retries` vòng). */
+export async function askJson<T>(o: AskOptions, validate: (v: T) => string[] = () => [], retries = 2): Promise<T> {
+  let content = o.content;
+  let lastErr = "";
+  for (let i = 0; i <= retries; i++) {
+    const text = await ask({ ...o, content });
+    try {
+      const v = extractJson<T>(text);
+      const errs = validate(v);
+      if (errs.length === 0) return v;
+      lastErr = errs.join("\n");
+    } catch (e) {
+      lastErr = (e as Error).message;
+    }
+    const base = typeof o.content === "string" ? [{ type: "text" as const, text: o.content }] : o.content;
+    content = [...base, { type: "text", text: `Lần trả lời trước không hợp lệ:\n${lastErr}\nHãy trả lại DUY NHẤT JSON đã sửa.` }];
+  }
+  throw new AiError(`Claude không trả về JSON hợp lệ sau ${retries + 1} lần: ${lastErr}`);
+}

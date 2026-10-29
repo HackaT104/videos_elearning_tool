@@ -19,3 +19,4 @@ export function createHyperFramesEngine(opts: HfRenderOptions = {}): RenderEngin
     render: (input, out, onProgress) => hfRender(input.workDir, input.timing, out, { ...opts, onProgress }),
   };
 }
+export * from "./sheet";

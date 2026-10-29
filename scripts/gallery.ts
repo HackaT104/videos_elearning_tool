@@ -5,9 +5,9 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { computeTiming, makeSentences, createNormalizer, type Video, type StyleId } from "@cvs/core";
 import { TEMPLATES, qaTimes } from "@cvs/engine";
-import { hfBuild, hfPreview, launchBrowser } from "@cvs/engine-hf";
+import { contactSheet, hfBuild, hfPreview, launchBrowser } from "@cvs/engine-hf";
 import { THEME_IDS } from "@cvs/themes";
-import { contactSheet } from "./lib/sheet";
+
 
 const SAMPLE_VO: Record<string, string> = {
   "title-card": "Chào mừng bạn đến với bài học về tín chỉ carbon. Một tín chỉ tương ứng với một tấn CO₂e.",

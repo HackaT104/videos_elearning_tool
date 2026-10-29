@@ -1,0 +1,20 @@
+{
+  "name": "@cvs/studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@cvs/core": "workspace:*",
+    "@cvs/db": "workspace:*",
+    "@cvs/tts": "workspace:*",
+    "@cvs/themes": "workspace:*",
+    "@cvs/engine": "workspace:*",
+    "@cvs/engine-hf": "workspace:*",
+    "@cvs/engine-rmt": "workspace:*",
+    "@cvs/ai": "workspace:*",
+    "@cvs/qa": "workspace:*"
+  }
+}
