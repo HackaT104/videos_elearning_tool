@@ -9,3 +9,7 @@ storage/*
 coverage/
 tests/.out/
 packages/engine-rmt/.bundle/
+packages/themes/.cache/
+packages/engine-rmt/remotion/custom/*.tsx
+.render-tmp/
+next-env.d.ts

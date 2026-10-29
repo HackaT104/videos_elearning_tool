@@ -2,8 +2,10 @@
 
 import type { LevelTier, Pace, VoiceConfig } from "./types";
 
-export const VOICE_FEMALE = "Trúc Ly";
-export const VOICE_MALE = "Hải Đăng";
+const env = (k: string) => (typeof process !== "undefined" ? process.env?.[k] : undefined) || undefined;
+/** Giọng mặc định (đổi trong .env: CVS_VOICE_FEMALE / CVS_VOICE_MALE). */
+export const VOICE_FEMALE = env("CVS_VOICE_FEMALE") ?? "Trúc Ly";
+export const VOICE_MALE = env("CVS_VOICE_MALE") ?? "Hải Đăng";
 
 export const EDGE_VOICES = { female: "vi-VN-HoaiMyNeural", male: "vi-VN-NamMinhNeural" };
 

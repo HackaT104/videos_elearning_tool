@@ -9,15 +9,17 @@
   },
   "scripts": {
     "dev": "concurrently -n web,worker -c blue,green \"pnpm --filter @cvs/web dev\" \"pnpm --filter @cvs/worker dev\"",
-    "start": "concurrently -n web,worker -c blue,green \"pnpm --filter @cvs/web start\" \"pnpm --filter @cvs/worker start\"",
+    "start": "concurrently -k -n web,worker -c blue,green \"pnpm --filter @cvs/web start\" \"pnpm --filter @cvs/worker start\"",
     "build": "pnpm --filter @cvs/web build",
     "test": "vitest run",
     "test:render": "cross-env CVS_RENDER_TESTS=1 vitest run tests/render",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "fixtures": "tsx scripts/make-fixtures.ts",
-    "fonts:check": "tsx scripts/check-fonts.ts",
-    "demo": "tsx scripts/demo.ts",
-    "setup": "tsx scripts/setup.ts"
+    "fonts:check": "tsx scripts/setup.ts --fonts-only",
+    "cai-dat": "tsx --env-file-if-exists=.env scripts/setup.ts",
+    "mock-cit": "tsx scripts/mock-cit.ts",
+    "gallery": "tsx scripts/gallery.ts",
+    "e2e": "tsx scripts/e2e.ts",
+    "fixtures": "tsx scripts/make-fixtures.ts"
   },
   "devDependencies": {
     "@cvs/ai": "workspace:*",
@@ -40,7 +42,8 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
-    "@cvs/studio": "workspace:*"
+    "@cvs/studio": "workspace:*",
+    "@remotion/renderer": "4.0.539"
   },
   "dependencies": {
     "exceljs": "^4.4.0"
