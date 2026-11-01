@@ -1,0 +1,5 @@
+* text=auto
+*.cmd text eol=crlf
+*.docx binary
+*.xlsx binary
+*.woff2 binary
