@@ -23,6 +23,18 @@ const SAMPLE_VO: Record<string, string> = {
   checklist: "Tín chỉ phải có tính bổ sung. Không được đếm trùng. Và phải bền vững lâu dài.",
   "quote-banner": "Hãy ghi nhớ. Mỗi tín chỉ phải đại diện cho một tấn giảm phát thải thực sự.",
   draft: "Đây là cảnh nháp. Lời thoại hiện theo mốc câu.",
+  "myth-fact": "Nhiều người nghĩ tín chỉ carbon chỉ là giấy phép được xả thải. Thực tế, mỗi tín chỉ là một tấn CO₂e đã được giảm và thẩm tra độc lập.",
+  "term-define": "Thẩm tra là gì? Thẩm tra là việc tổ chức độc lập xác nhận lượng giảm phát thải đã thực sự xảy ra. Đừng nhầm với thẩm định, diễn ra trước khi dự án đăng ký.",
+  "kinetic-statement": "Hãy nhớ điều quan trọng nhất. An toàn luôn đi trước năng suất.",
+  "module-divider": "Chúng ta chuyển sang học phần hai. Trong học phần này bạn sẽ nắm được quy trình thẩm định và thẩm tra.",
+  "hub-spoke": "An toàn lao động dựa trên bốn hoạt động cốt lõi. Trước hết là nhận diện mối nguy và đánh giá rủi ro. Tiếp theo là thiết lập biện pháp kiểm soát. Cuối cùng là đào tạo người lao động.",
+  "cycle-loop": "Chu trình PDCA giúp tổ chức cải tiến liên tục. Hoạch định: đặt mục tiêu và lập kế hoạch. Thực hiện: triển khai theo kế hoạch đã đề ra. Kiểm tra: đo lường và đánh giá kết quả. Hành động: điều chỉnh để cải tiến, rồi vòng lặp bắt đầu lại.",
+  "decision-tree": "Để xác định điểm kiểm soát tới hạn, ta trả lời từng câu hỏi. Nếu không có biện pháp kiểm soát, công đoạn này không phải CCP. Nếu có, ta hỏi tiếp: công đoạn có loại bỏ hoặc giảm mối nguy không? Nếu có, đó là điểm kiểm soát tới hạn. Nếu không, hãy xem xét công đoạn tiếp theo.",
+  "quiz-check": "Câu hỏi nhanh: theo ISO 45001, biện pháp kiểm soát nào được ưu tiên cao nhất? Hãy chọn một trong bốn phương án. Đáp án đúng là loại bỏ mối nguy. Theo thứ bậc kiểm soát, loại bỏ mối nguy luôn được ưu tiên trước, còn bảo hộ cá nhân là lựa chọn cuối cùng.",
+  "donut-share": "Trong tổng phát thải của nhà máy, điện năng chiếm phần lớn nhất. Nhiên liệu và vận chuyển chiếm phần còn lại. Vì vậy tiết kiệm điện là ưu tiên số một.",
+  "trend-line": "Phát thải của doanh nghiệp tăng đều từ năm 2019. Năm 2022 đạt đỉnh. Sau khi áp dụng ISO 14001, phát thải giảm rõ rệt.",
+  "rank-reorder": "Năm 2023, điện năng là nguồn phát thải lớn nhất. Sang năm 2024, thứ hạng đã thay đổi. Vận chuyển vươn lên dẫn đầu sau khi nhà máy lắp điện mặt trời.",
+  "ui-walkthrough": "Mở phần mềm quản lý tài liệu. Chọn mục Hồ sơ đánh giá ở menu bên trái. Nhập tên cơ sở cần đánh giá. Bấm nút Lưu để hoàn tất.",
 };
 
 export function galleryVideo(style: StyleId, templates = Object.keys(TEMPLATES), level = "L1"): Video {

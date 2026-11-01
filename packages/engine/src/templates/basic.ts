@@ -1,5 +1,6 @@
 import type { Tone } from "@cvs/themes";
 import { iconSvg } from "../icons";
+import { kineticLh, kineticText, themeMark, type KineticPreset } from "../kinetic";
 import { count, dim, draw, enter, fade, grow, pop, shift, undim } from "../motion";
 import { blockHeight, esc, fitSize, formatViNumber, rich } from "../text";
 import { beatOf, box, header, px, SAFE, SpecBuilder, toneClass, type Beat, type TemplateDef } from "./common";
@@ -10,6 +11,15 @@ const iconSchema = { type: "string", description: "Tên biểu tượng trong th
 const headerProps = { kicker: { type: "string" }, title: { type: "string" } };
 
 // ---------------- title-card ----------------
+/** Kiểu chữ chuyển động của tiêu đề theo phong cách (mặc định word-rise). */
+const TITLE_KINETIC: Partial<Record<string, KineticPreset>> = {
+  "toi-dien-anh": "mask-rise",
+  "bien-tap-tap-chi": "mask-rise",
+  "toi-gian-thuy-si": "mask-rise",
+  "phang-tuoi-sang": "scale-pop",
+  "pastel-hoc-duong": "scale-pop",
+};
+
 export type TitleCardParams = { kicker?: string; title: string; subtitle?: string; icon?: string; tone?: Tone; at?: { subtitle?: Beat; icon?: Beat } };
 
 export const titleCard: TemplateDef<TitleCardParams> = {
@@ -23,10 +33,12 @@ export const titleCard: TemplateDef<TitleCardParams> = {
     const n = ctx.sentences.length;
     const W = P.icon ? 1120 : 1500;
     const tSize = fitSize(P.title, W, 104, { maxLines: 3, kind: "display", min: 56 });
-    const tH = blockHeight(P.title, tSize, W, "display");
+    const tMark = themeMark(ctx.theme.id);
+    const tLh = kineticLh(P.title, tMark);
+    const tH = blockHeight(P.title, tSize, W, "display", tLh);
     const sSize = P.subtitle ? fitSize(P.subtitle, W, 44, { maxLines: 3, min: 30 }) : 0;
     const sH = P.subtitle ? blockHeight(P.subtitle, sSize, W) : 0;
-    const total = (P.kicker ? 62 : 0) + tH + 44 + (P.subtitle ? 30 + sH : 0);
+    const total = (P.kicker ? 62 : 0) + tH + 44 + (tLh > 1.12 ? 14 : 0) + (P.subtitle ? 30 + sH : 0);
     let y = Math.max(SAFE.y0 + 60, 520 - total / 2);
     const tone = toneClass(P.tone);
     b.add(`<div id="${b.id("wrap")}" class="abs ${tone}" style="${box(0, 0, 1920, 1080)}">`);
@@ -35,9 +47,9 @@ export const titleCard: TemplateDef<TitleCardParams> = {
       b.anim(enter(ctx, b.id("kicker"), { t: 0.2 }, { rise: 14 }));
       y += 62;
     }
-    b.add(`<div id="${b.id("title")}" class="abs d t" style="${box(SAFE.x0, y, W)}font-size:${tSize}px;">${rich(b.text(P.title))}</div>`);
-    b.anim(enter(ctx, b.id("title"), { t: 0.35 }, { rise: 30 }));
-    y += tH + 22;
+    kineticText(b, { name: "title", text: P.title, cls: "abs d t", style: `${box(SAFE.x0, y, W)}font-size:${tSize}px;`, size: tSize, preset: TITLE_KINETIC[ctx.theme.id] ?? "word-rise", mark: tMark, lh: tLh, at: { t: 0.3 } });
+    // gạch chân từ nhấn ở dòng cuối → lùi vạch trang trí để không thành hai vạch dính nhau
+    y += tH + 22 + (tLh > 1.12 ? 14 : 0);
     b.add(`<svg id="${b.id("rule")}" class="abs" style="${box(SAFE.x0, y, 360, 12)}overflow:visible" viewBox="0 0 360 12"><path class="line draw" pathLength="1" d="M2 6 H358" style="stroke:var(--tone);stroke-width:8px" id="${b.id("rule-p")}"/></svg>`);
     b.anim(draw(ctx, b.id("rule-p"), { t: 0.75 }, 0.8));
     y += 22;

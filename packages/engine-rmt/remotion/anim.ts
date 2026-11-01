@@ -1,7 +1,7 @@
 // Phát lại rãnh chuyển động SceneSpec theo thời gian – cùng ngữ nghĩa với GSAP fromTo trên timeline:
 // trước tween đầu tiên → trạng thái "from" của nó; sau đó → tween bắt đầu gần nhất (theo thời gian) quyết định giá trị.
 
-import { ANIM_KEYS, easeFn, formatViNumber, resolveDur, resolveTime, type Anim, type AnimProps, type CountAnim, type SceneTimingLike } from "@cvs/engine/browser";
+import { ANIM_KEYS, easeFn, formatViNumber, resolveDur, resolveTime, wipeClip, type Anim, type AnimProps, type CountAnim, type SceneTimingLike } from "@cvs/engine/browser";
 import type { CSSProperties } from "react";
 
 type Resolved = { a: Anim; start: number; dur: number };
@@ -48,6 +48,7 @@ export function styleOf(p: AnimProps): CSSProperties {
   }
   if (p.blur !== undefined) s.filter = `blur(${p.blur}px)`;
   if (p.dash !== undefined) s.strokeDashoffset = p.dash;
+  if (p.wipe !== undefined || p.wipeUp !== undefined) s.clipPath = wipeClip(p.wipe, p.wipeUp);
   return s;
 }
 

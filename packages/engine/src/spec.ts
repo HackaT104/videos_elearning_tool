@@ -16,9 +16,19 @@ export type AnimProps = {
   blur?: number;
   /** stroke-dashoffset (đường có pathLength=1) */
   dash?: number;
+  /** Lộ dần trái → phải 0..1: clip-path inset(0 calc((1−v)·100%) 0 0). */
+  wipe?: number;
+  /** Lộ dần dưới → trên 0..1: clip-path inset(calc((1−v)·100%) 0 0 0). */
+  wipeUp?: number;
 };
 
-export const ANIM_KEYS: (keyof AnimProps)[] = ["opacity", "x", "y", "scale", "scaleX", "scaleY", "rotate", "blur", "dash"];
+export const ANIM_KEYS: (keyof AnimProps)[] = ["opacity", "x", "y", "scale", "scaleX", "scaleY", "rotate", "blur", "dash", "wipe", "wipeUp"];
+
+/** clip-path cho wipe/wipeUp (dùng chung HyperFrames CSS và Remotion style). */
+export function wipeClip(wx: number | undefined, wy: number | undefined): string {
+  const pc = (v: number | undefined) => `${Math.round((1 - (v ?? 1)) * 1e5) / 1e3}%`;
+  return `inset(${pc(wy)} ${pc(wx)} 0% 0%)`;
+}
 
 export type Anim = {
   /** id đầy đủ của phần tử (đã có tiền tố sN-). */

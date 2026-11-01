@@ -17,6 +17,30 @@ const RULES = `QUY TẮC BẮT BUỘC (khóa học e-learning TUV NORD, tiếng 
 - Không vẽ/mô phỏng logo hay giao diện của tổ chức thật – chỉ ghi tên bằng chữ.
 - Chữ ngắn gọn: nhãn ≤ 6 từ, câu trên màn hình ≤ 14 từ.`;
 
+// Checklist chuyển động (rút gọn từ .claude/skills/cvs-scene-design – sửa nguyên tắc thì cập nhật cả hai nơi).
+export const MOTION_CHECKLIST = `CHECKLIST THIẾT KẾ CHUYỂN ĐỘNG:
+- Một ý mỗi cảnh; mỗi câu thoại là một nhịp với MỘT tiêu điểm mới (hiện ra hoặc được nhấn), phần cũ lùi lại.
+- Mạch bài giảng: hook (câu hỏi/hiểu lầm/con số) → gọi tên khái niệm → cách vận hành (bước, nhân quả, luồng) → bằng chứng (số liệu có nguồn) → tóm lại một dòng.
+- Chọn template trong THƯ VIỆN theo HÌNH DẠNG thông tin (so sánh, quy trình, nhân quả, một con số, tỷ trọng, mốc thời gian, danh sách, kết luận…), không mặc định thẻ tiêu đề.
+- Ưu tiên template có nhiều lớp chuyển động (sơ đồ lớn dần, nét nối vẽ ra, cột mọc, bộ đếm số, đánh dấu lần lượt) hơn là một khối chữ.
+- Tiết lộ dần (progressive disclosure): rải "at" theo câu nói tới ý đó, phần tử chính ở f 0.05–0.2, phần phụ f 0.3–0.7; không dồn mọi thứ vào câu 0; nửa sau cảnh vẫn có thứ mới.
+- Nhấn từ khóa bằng **…** (1–2 cụm mỗi cảnh); chữ đọc được giữ ≥ 0,5 s + 0,3 s/từ.
+- Số liệu: một thông điệp mỗi biểu đồ, tiêu đề nói thông điệp, tô một cột/chuỗi chính, số lớn nhất khung; chỉ số có trong nguồn.
+- Màu theo vai trò: accent = tiêu điểm, alt = đối trọng, money = tiền, warn = CHỈ rủi ro/chi phí/sai.
+- Cảnh TEMPLATE: engine tự thêm máy quay đẩy nhẹ (tùy theme) và hiệu ứng ra cảnh – đừng tự tạo zoom/exit.`;
+
+export const CUSTOM_SCENE_CHECKLIST = `CHECKLIST CHUYỂN ĐỘNG CHO CẢNH TÙY BIẾN:
+- Lớp vào: nền/khung (mờ dần) → tiêu đề (expo.out/power4.out 0,6–0,8 s, trượt 16–40 px + blur 6 px → 0) → nội dung chính → nhãn phụ → điểm nhấn.
+- Cảnh tùy biến KHÔNG có máy quay/ra cảnh của engine: tự viết exit đúng như hợp đồng (bắt buộc, kẻo cắt cứng).
+- Kỹ thuật dưới đây dùng cho cả hai engine: HyperFrames viết bằng tl.fromTo, Remotion bằng interpolate theo t (cùng mốc, cùng ease).
+- Stagger nhóm 0,06–0,12 s (mục danh sách 0,04–0,08 s) bằng vòng lặp: mốc at(…) của hợp đồng + k * 0.08; phần sau bắt đầu khi phần trước xong 30–50 %.
+- Đổi kiểu vào giữa các lớp, đừng chỉ "mờ + trượt lên": nét vẽ (path pathLength="1", strokeDashoffset 1 → 0, power2.inOut), mọc (scaleX/scaleY từ 0, transform-origin đặt trên CHÍNH phần tử được scale, vd. cột: bottom), lộ bằng clip-path, blur-in, đếm số (tabular-nums, số kiểu Việt 423,9).
+- back.out(1.4–1.7) / elastic.out(1, 0.5) chỉ cho 1–2 biểu tượng/huy hiệu; không nảy chữ dài; opacity tween riêng bằng ease không nảy (power2.out).
+- Dời bố cục power2.inOut 0,7–1,2 s; khi ý mới thành trọng tâm, ý cũ lùi opacity 0.35.
+- Nhấn từ khóa đúng lúc giọng nói tới: marker lộ dần sau chữ hoặc lớp màu nhấn chồng lên rồi crossfade.
+- Chữ đã vào chỗ thì đứng yên, không nhấp nháy; dao động "sống" (vd. wobble của Remotion) chỉ ≤ 4 px trên hình trang trí, không trên chữ; không tự thêm máy quay lớn (tối đa một push-in scale 1 → 1.02 sine.inOut trên div bọc bên trong stage).
+- Tiếng Việt: không tách chữ thành ký tự thô (chỉ theo từ, hoặc Intl.Segmenter grapheme trên chuỗi NFC); mặt nạ overflow chừa ≥ 0.3em trên/dưới cho dấu.`;
+
 // ---------------- Kịch bản ----------------
 
 export type ScriptConstraints = { level: string; targetSeconds?: number; audience?: string; extra?: string };
@@ -114,7 +138,7 @@ export async function designScene(video: Video, scene: Scene, T?: SceneTiming, n
   const n = scene.sentences.length;
   const r = await askJson<{ template: string; params: Record<string, unknown>; assumptions: string[]; reasoning?: string }>(
     {
-      system: `Bạn là đạo diễn hình chuyển động cho video e-learning. Bạn chọn MỘT template cảnh có tham số và điền tham số để hình khớp từng câu thoại. ${RULES}\n\nBiểu tượng có sẵn: ${ICON_NAMES.join(", ")}.\n\nTHƯ VIỆN TEMPLATE:\n${catalog()}`,
+      system: `Bạn là đạo diễn hình chuyển động cho video e-learning. Bạn chọn MỘT template cảnh có tham số và điền tham số để hình khớp từng câu thoại. ${RULES}\n\n${MOTION_CHECKLIST}\n\nBiểu tượng có sẵn: ${ICON_NAMES.join(", ")}.\n\nTHƯ VIỆN TEMPLATE:\n${catalog()}`,
       content: `${seriesSpec(video)}
 
 ${sceneBrief(video, scene, T)}
@@ -161,7 +185,7 @@ export async function writeCustomScene(video: Video, scene: Scene, o: CustomScen
   let feedback = "";
   for (let round = 0; round < 3; round++) {
     const text = await ask({
-      system: `Bạn viết mã cảnh hoạt hình cho video e-learning (${o.engine === "hyperframes" ? "HTML + CSS + SVG + GSAP, HyperFrames" : "React/TSX, Remotion"}). ${RULES}`,
+      system: `Bạn viết mã cảnh hoạt hình cho video e-learning (${o.engine === "hyperframes" ? "HTML + CSS + SVG + GSAP, HyperFrames" : "React/TSX, Remotion"}). ${RULES}\n\n${MOTION_CHECKLIST}\n\n${CUSTOM_SCENE_CHECKLIST}\nMọi quy tắc trên phải tuân thủ HỢP ĐỒNG FILE CẢNH (nếu mâu thuẫn, hợp đồng thắng).`,
       content: `${seriesSpec(video)}
 
 HỢP ĐỒNG FILE CẢNH:

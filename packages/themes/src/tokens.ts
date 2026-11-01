@@ -49,7 +49,7 @@ export type Theme = {
     slowEnterDur: number;
     /** Độ trượt khi vào (px). */
     rise: number;
-    /** Máy quay đẩy chậm cả cảnh: scale 1 → 1 + camera (mặc định 0,025; 0 = tắt). */
+    /** Máy quay đẩy chậm cả cảnh theo tỉ lệ 1 + camera: scale 1/(1+camera) → 1 (mặc định 0,015; 0 = tắt). */
     camera?: number;
   };
   /** Chữ hoa cho tiêu đề phụ (kicker). */

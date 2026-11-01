@@ -1,4 +1,8 @@
 // Thư viện biểu tượng trung tính (nét 24×24, currentColor). Không vẽ logo/giao diện tổ chức thật.
+// Icon vẽ tay bên dưới + thư viện mở Lucide (icon-lib.ts). Trùng tên → icon vẽ tay thắng; "lucide:<tên>" ép dùng Lucide.
+
+import { CURATED_LIB_ICONS, libIconBody, libIconExists } from "./icon-lib";
+export { CURATED_LIB_ICONS, LIB_PREFIX, libIconNames } from "./icon-lib";
 
 export const ICONS: Record<string, string> = {
   leaf: `<path d="M5 19c0-8 5-13 14-14 0 9-5 14-13 14z"/><path d="M5 19c3-4 6-7 10-9"/>`,
@@ -60,28 +64,92 @@ export const ICONS: Record<string, string> = {
   ship: `<path d="M3 16l2 4h14l2-4z"/><path d="M6 16V10h12v6M9 10V6h6v4"/>`,
 };
 
-export const ICON_NAMES = Object.keys(ICONS);
+/** Tên icon đưa vào prompt AI: icon vẽ tay + danh sách Lucide chọn lọc (iconExists nhận cả tên Lucide khác). */
+export const ICON_NAMES: string[] = [...Object.keys(ICONS), ...CURATED_LIB_ICONS.filter((n) => !(n in ICONS) && libIconExists(n))];
+
+const own = (name: string) => (Object.prototype.hasOwnProperty.call(ICONS, name) ? ICONS[name] : undefined);
+
+function iconBody(name: string | undefined): string | undefined {
+  const n = (name ?? "").trim().toLowerCase();
+  if (!n || n.length > 64) return undefined;
+  return own(n) ?? libIconBody(n);
+}
+
+/** true nếu tên là icon vẽ tay hoặc BẤT KỲ icon nào trong gói Lucide (có/không tiền tố "lucide:"). */
+export function iconExists(name: string | undefined): boolean {
+  return iconBody(name) !== undefined;
+}
 
 export function iconSvg(name: string | undefined, id?: string): string {
-  const body = ICONS[name ?? ""] ?? ICONS.idea;
-  return `<svg viewBox="0 0 24 24"${id ? ` id="${id}"` : ""} aria-hidden="true">${body}</svg>`;
+  const body = iconBody(name) ?? ICONS.idea;
+  return `<svg viewBox="0 0 24 24"${id ? ` id="${id}"` : ""} fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 }
 
 /** Gợi ý biểu tượng theo từ khóa tiếng Việt. */
 export function guessIcon(text: string): string {
-  const t = text.toLowerCase();
+  const t = text.normalize("NFC").toLowerCase(); // NFD tách dấu → ranh giới từ sai
   const rules: [RegExp, string][] = [
+    // cụm từ cụ thể (đứng trước các từ chung như "an toàn", "điện", "nước", "đánh giá")
+    [/an toàn thông tin|bảo mật|an ninh mạng|iso 27001|27001/, "lock-keyhole"],
+    [/an toàn lao động|bảo hộ lao động|bảo hộ|ppe|iso 45001|45001|mũ bảo hộ/, "hard-hat"],
+    [/an toàn thực phẩm|vệ sinh thực phẩm|haccp|iso 22000|thực phẩm/, "utensils"],
+    [/điểm kiểm soát tới hạn|ccp|giới hạn tới hạn/, "crosshair"],
+    [/chữa cháy|pccc|phòng cháy|bình chữa cháy/, "fire-extinguisher"],
+    [/an toàn điện|điện giật/, "plug-zap"],
+    [/khẩn cấp|ứng phó sự cố|sơ tán|thoát hiểm|báo động/, "siren"],
+    [/đánh giá rủi ro|nhận diện mối nguy|mối nguy/, "shield-alert"],
+    [/tai nạn|sự cố|thương tích/, "octagon-alert"],
+    [/sơ cứu|y tế|sức khỏe|sức khoẻ|bệnh nghề nghiệp/, "heart-pulse"],
+    [/hóa chất|hoá chất|phòng thí nghiệm|thử nghiệm|xét nghiệm|mẫu thử/, "flask-conical"],
+    [/độc hại|sinh học nguy hại|nguy hại/, "biohazard"],
+    [/tiếng ồn/, "volume-2"],
+    [/đánh giá nội bộ|chuyên gia đánh giá|audit|đánh giá viên/, "clipboard-check"],
+    [/sự không phù hợp|không phù hợp/, "circle-x"],
+    [/hành động khắc phục|khắc phục|cải tiến liên tục|cải tiến|pdca/, "refresh-cw"],
+    [/iso 9001|9001|chất lượng/, "badge-check"],
+    [/iso 14001|14001|môi trường/, "leaf"],
+    [/iso 50001|tiết kiệm năng lượng|hiệu suất năng lượng|hiệu quả năng lượng/, "gauge"],
+    [/phát thải|khí thải|ống khói/, "smoke"],
+    [/co₂|co2|carbon|các bon|khí nhà kính/, "co2"],
+    [/điện mặt trời|mặt trời|năng lượng tái tạo/, "sun"],
+    [/điện gió|gió/, "wind"],
+    [/nhiên liệu|xăng|dầu/, "fuel"],
+    [/nước thải/, "droplets"],
+    [/chất thải|rác thải|rác/, "trash-2"],
+    [/tái chế|tuần hoàn/, "recycle"],
+    [/ô nhiễm|bụi/, "cloud-fog"],
+    [/biến đổi khí hậu|khí hậu/, "earth"],
+    [/đa dạng sinh học|sinh thái/, "bird"],
+    [/bảo quản lạnh|đông lạnh|tủ lạnh|chuỗi lạnh/, "refrigerator"],
+    [/rửa tay/, "hand"],
+    [/nghị định|thông tư|pháp luật|pháp lý|xử phạt|tuân thủ/, "gavel"],
+    [/lãnh đạo|ban giám đốc|quản lý cấp cao/, "briefcase"],
+    [/hợp đồng|cam kết/, "file-pen-line"],
+    [/giấy phép/, "file-badge"],
+    [/mật khẩu/, "key-round"],
+    [/tấn công mạng|mã độc|virus|lỗ hổng/, "bug"],
+    [/dữ liệu|cơ sở dữ liệu|sao lưu/, "database"],
+    [/máy tính|phần mềm|công nghệ thông tin|cntt|hệ thống thông tin/, "laptop"],
+    [/đào tạo|khóa học|khoá học|học viên|giảng viên|học tập|năng lực/, "graduation-cap"],
+    [/người lao động|nhân viên|nhân sự/, "users"],
+    [/khách hàng/, "user-check"],
+    [/xây dựng|công trường|thi công|giàn giáo/, "construction"],
+    [/bảo trì|bảo dưỡng|sửa chữa/, "wrench"],
+    [/hiệu chuẩn|đo lường/, "gauge"],
+    [/truy xuất nguồn gốc|truy xuất/, "qr-code"],
+    [/xe nâng/, "forklift"],
+    [/vận chuyển|logistics|giao hàng|chuỗi cung ứng|nhà cung cấp/, "truck"],
+    [/kho hàng|lưu kho|kho/, "warehouse"],
     [/hấp thụ|loại bỏ|lưu giữ|bể chứa/, "forest"],
     [/rừng|cây|trồng/, "tree"],
     [/nhà máy|công nghiệp|sản xuất/, "factory"],
-    [/phát thải|khí thải|ống khói/, "smoke"],
-    [/co₂|co2|carbon|các bon|khí nhà kính/, "co2"],
     [/tín chỉ|chứng nhận|vcu|cấp/, "certificate"],
+    [/đánh giá/, "clipboard-check"], // trước "giá" (tiền)
     [/tiền|giá|usd|đô la|chi phí|doanh thu/, "coin"],
     [/hóa đơn|thanh toán/, "invoice"],
     [/tài liệu|pd|hồ sơ|báo cáo/, "document"],
     [/thẩm tra|kiểm tra|giám sát/, "magnifier"],
-    [/thẩm định|đánh giá/, "search"],
+    [/thẩm định/, "search"],
     [/rủi ro|cảnh báo|nguy cơ/, "warning"],
     [/đăng ký|sổ|registry/, "ledger"],
     [/người|cộng đồng|bên|chủ dự án/, "people"],
@@ -98,6 +166,26 @@ export function guessIcon(text: string): string {
     [/tiêu chuẩn|quy định|luật/, "scale"],
     [/bảo đảm|an toàn|bảo vệ/, "shield"],
     [/hàng không|máy bay|corsia/, "plane"],
+    // từ chung (chỉ dùng khi không khớp quy tắc nào ở trên)
+    [/câu hỏi|hỏi đáp|quiz|thắc mắc/, "circle-help"],
+    [/lưu ý|ghi chú|thông tin/, "info"],
+    [/giao tiếp|trao đổi|tham vấn|phản hồi/, "messages-square"],
+    [/thông báo|truyền thông/, "megaphone"],
+    [/cấm|nghiêm cấm/, "ban"],
+    [/doanh nghiệp|công ty|tổ chức/, "building"],
+    [/tài chính|ngân sách|đầu tư/, "wallet"],
+    [/lợi nhuận|tăng trưởng|tăng/, "trending-up"],
+    [/tỷ lệ|tỉ lệ|phần trăm/, "percent"],
+    [/thống kê|số liệu/, "chart-bar"],
+    [/máy móc|thiết bị/, "cog"],
+    [/xe|ô tô|giao thông/, "car"],
+    [/tàu|cảng|biển/, "ship"],
+    [/lúa|gạo|nông sản/, "wheat"],
+    [/thịt/, "beef"],
+    [/sữa/, "milk"],
+    [/nấu|bếp/, "chef-hat"],
+    [/thành công|đạt|hoàn thành/, "trophy"],
+    [/ý tưởng|sáng kiến/, "lightbulb"],
   ];
   // ranh giới từ hỗ trợ chữ có dấu ("giá" không khớp trong "giám")
   const hit = rules.find(([re]) => new RegExp(`(?<![\\p{L}])(?:${re.source})(?![\\p{L}])`, "u").test(t));

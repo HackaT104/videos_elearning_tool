@@ -50,6 +50,12 @@ describe("lint hợp đồng cảnh HyperFrames", () => {
     const bad = good.replace('window.__timelines["s1"] = tl;', "").replace("const tl = gsap.timeline({ paused: true });", 'const tl = gsap.timeline({ paused: true });\nwindow.__timelines["s1"] = tl;');
     expect(rules(bad)).toContain("register-timeline");
   });
+  it("ease không có bản Remotion → cảnh báo; tên GSAP rút gọn hợp lệ", () => {
+    const warns = (src: string) => lintScene(src, "s1").filter((i) => i.rule === "unknown-ease");
+    expect(warns(good)).toEqual([]);
+    expect(warns(mutate(/ease: "expo\.out"/, 'ease: "rough"'))).toHaveLength(1);
+    expect(warns(mutate(/ease: "expo\.out"/, 'ease: "elastic"'))).toEqual([]);
+  });
   it("chữ nhỏ hơn 28px → cảnh báo", () => {
     expect(lintScene(good.replace("font-size:42px", "font-size:20px"), "s1").some((i) => i.rule === "min-font")).toBe(true);
   });

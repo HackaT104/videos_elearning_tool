@@ -83,6 +83,16 @@ export function buildSceneSpec(video: Video, scene: Scene, opts: { isLast?: bool
       spec = TEMPLATES.draft.build({ note: errors[0] }, ctx);
     }
   }
+  // máy quay sống: đẩy chậm cả cảnh theo tỉ lệ 1+k, từ 1/(1+k) lên đúng 1 ở cuối cảnh – nội dung luôn ≤ bố cục gốc nên không
+  // bao giờ ra khỏi vùng an toàn (probe đo ở scale 1 = lúc lớn nhất). k mặc định 0,015: chữ 28 px lúc nhỏ nhất vẫn ≥ 27,5 px.
+  // Không áp cho cảnh nháp/tùy biến; dòng nguồn ở ngoài lớp quay.
+  const k = ctx.theme.motion.camera ?? 0.015;
+  if (k > 0 && template !== "draft" && design.template !== "custom") {
+    const cam = `${scene.id}-cam`;
+    const s0 = Math.round((1 / (1 + k)) * 1e4) / 1e4;
+    spec.html = `<div id="${cam}" class="cvs-cam" data-cam-from="${s0}" style="position:absolute;inset:0;transform-origin:50% 50%;">\n${spec.html}\n</div>`;
+    spec.anims.unshift({ id: cam, from: { scale: s0 }, to: { scale: 1 }, at: { t: 0 }, until: { end: 0 }, dur: 1, ease: "sine.inOut" });
+  }
   if (opts.isLast && video.sources) {
     const id = `${scene.id}-src`;
     const text = `Nguồn: ${video.sources}`;

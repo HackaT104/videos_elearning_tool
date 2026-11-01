@@ -1,5 +1,7 @@
 // Lint hợp đồng file cảnh HyperFrames (mục 6A.3) bằng regex/parse nhẹ. Vi phạm → trả lại LLM sửa.
 
+import { isKnownEase } from "@cvs/engine";
+
 export type LintIssue = { rule: string; severity: "error" | "warning"; message: string; line?: number };
 
 function lineOf(src: string, idx: number) {
@@ -116,6 +118,9 @@ export function lintScene(src: string, sceneId: string): LintIssue[] {
       if (Number(pos) >= 1) err("hard-seconds", `Mốc cứng ${pos}s – dùng at(i, f) (chỉ tiêu đề < 1 s được giây cứng)`, m.index);
     } else if (!/\bat\(|T\.dur|T\.cues|T\.ends/.test(pos)) err("hard-seconds", `Vị trí "${pos}" không đi qua at()/T`, m.index);
     if (vars && /\brepeat\s*:\s*\d/.test(vars)) warn("repeat", "Có repeat hữu hạn – kiểm tra tất định", m.index);
+    // ease lạ: GSAP vẫn chạy nhưng Remotion không có công thức → hai bộ dựng lệch hình
+    const ease = vars?.match(/\bease\s*:\s*["'`]([^"'`]+)["'`]/)?.[1];
+    if (ease && !isKnownEase(ease)) warn("unknown-ease", `Ease "${ease}" không có bản khớp GSAP cho Remotion – dùng power/sine/expo/circ/back/elastic/bounce`, m.index);
   }
 
   // id phải có tiền tố sN- (kể cả <symbol>, <filter>, gradient)

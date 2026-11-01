@@ -58,6 +58,17 @@ export function move(m: MotionCtx, id: string, at: TimeRef, from: Anim["from"], 
   return { id, from, to, at, dur: dur ?? m.theme.motion.moveDur, ease: m.theme.motion.moveEase };
 }
 
+/** Lộ dần bằng clip-path: "right" trái → phải (wipe), "up" dưới → trên (wipeUp). */
+export function wipeIn(m: MotionCtx, id: string, at: TimeRef, dir: "right" | "up" = "right", dur?: number): Anim {
+  const k = dir === "up" ? "wipeUp" : "wipe";
+  return { id, from: { [k]: 0 }, to: { [k]: 1 }, at, dur: dur ?? (m.slow ? 1.1 : 0.8), ease: "power3.inOut" };
+}
+
+/** Bật vào có nảy đàn hồi nhẹ (elastic.out) – cho biểu tượng/huy hiệu, không dùng cho chữ dài. */
+export function springIn(m: MotionCtx, id: string, at: TimeRef, from = 0.4): Anim {
+  return { id, from: { opacity: 0, scale: from }, to: { opacity: 1, scale: 1 }, at, dur: m.slow ? 1.3 : 1.0, ease: "elastic.out(1, 0.5)" };
+}
+
 /** Đếm số 1,2–1,5 s. */
 export function count(m: MotionCtx, id: string, at: TimeRef, to: number, o: { from?: number; decimals?: number; prefix?: string; suffix?: string } = {}): CountAnim {
   return { id, from: o.from ?? 0, to, decimals: o.decimals ?? 0, prefix: o.prefix, suffix: o.suffix, at, dur: m.slow ? 1.5 : 1.2, ease: "power2.out" };

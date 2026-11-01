@@ -25,3 +25,12 @@ Nguyên tắc áp dụng cho Course Video Studio: xem `apps/web/DESIGN.md`.
 Nguồn: https://github.com/DietrichGebert/ponytail (MIT, bản 2026-10-29, commit 96608e0). Chỉ chép các file SKILL.md (chỉ dẫn thuần văn bản);
 không cài hook Node của plugin. Muốn cài bản plugin đầy đủ (tự bật mỗi phiên, thanh trạng thái): trong Claude Code gõ lần lượt
 `/plugin marketplace add DietrichGebert/ponytail` rồi `/plugin install ponytail@ponytail`.
+
+## Thiết kế cảnh & chuyển động trong video: cvs-scene-design
+
+| Kỹ năng | Dùng khi |
+|---|---|
+| cvs-scene-design | Viết/sửa template cảnh, cảnh tùy biến HyperFrames/Remotion, prompt AI chọn template/viết cảnh, hoặc khi video "đơn giản quá / như slide". Gồm: mô hình SceneSpec, AnimProps & ease, nhịp theo câu, stagger, giữ chữ, màu theo vai trò, tiếng Việt, mạch bài giảng, biểu đồ |
+
+Chưng cất từ HyperFrames (https://github.com/heygen-com/hyperframes, Apache-2.0, commit 6b0abb4) – xem `cvs-scene-design/LICENSE` và `NOTICE.md`.
+Không cài skill lõi `hyperframes` (hợp đồng của nó xung đột với lint của dự án). Checklist rút gọn cho Claude trong app: `packages/ai/src/index.ts`.

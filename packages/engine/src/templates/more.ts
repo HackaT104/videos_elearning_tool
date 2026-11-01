@@ -1,5 +1,6 @@
 import type { Tone } from "@cvs/themes";
 import { iconSvg } from "../icons";
+import { kineticLh, kineticText, themeMark } from "../kinetic";
 import { dim, draw, enter, fade, grow, move, pop, shift, undim } from "../motion";
 import type { TimeRef } from "../spec";
 import { blockHeight, esc, fitSize, rich } from "../text";
@@ -325,7 +326,9 @@ export const quoteBanner: TemplateDef<QuoteBannerParams> = {
     const n = ctx.sentences.length;
     const W = 1500;
     const qs = fitSize(P.quote, W, 80, { maxLines: 4, kind: "display", min: 40 });
-    const qh = blockHeight(P.quote, qs, W, "display");
+    const qMark = themeMark(ctx.theme.id);
+    const qLh = kineticLh(P.quote, qMark);
+    const qh = blockHeight(P.quote, qs, W, "display", qLh);
     const total = (P.kicker ? 62 : 0) + qh + (P.attribution ? 70 : 0);
     let y = 520 - total / 2;
     const top = y;
@@ -335,8 +338,7 @@ export const quoteBanner: TemplateDef<QuoteBannerParams> = {
       b.anim(enter(ctx, b.id("kicker"), { t: 0.25 }, { rise: 14 }));
       y += 62;
     }
-    b.add(`<div id="${b.id("q")}" class="abs d t" style="${box(220, y, W)}font-size:${qs}px;">${rich(b.text(P.quote))}</div>`);
-    b.anim(enter(ctx, b.id("q"), beatOf(P.at?.quote, 0, 1, n, 0.05), { rise: 24 }));
+    kineticText(b, { name: "q", text: P.quote, cls: "abs d t", style: `${box(220, y, W)}font-size:${qs}px;`, size: qs, preset: "word-fade", mark: qMark, lh: qLh, at: beatOf(P.at?.quote, 0, 1, n, 0.05), total: 1.6 });
     y += qh;
     if (P.attribution) {
       y += 34;

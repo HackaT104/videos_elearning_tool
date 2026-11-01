@@ -2,6 +2,7 @@ export * from "./spec";
 export * from "./ease";
 export * from "./text";
 export * from "./motion";
+export * from "./kinetic";
 export * from "./icons";
 export * from "./templates/index";
 export * from "./scene";

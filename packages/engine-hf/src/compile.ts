@@ -30,9 +30,25 @@ function gsapVars(p: AnimProps): string {
     if (k === "blur") parts.push(`filter: "blur(${r(v)}px)"`);
     else if (k === "dash") parts.push(`strokeDashoffset: ${r(v)}`);
     else if (k === "rotate") parts.push(`rotation: ${r(v)}`);
+    else if (k === "wipe" || k === "wipeUp") parts.push(`"${WIPE_VAR[k]}": ${r(v)}`);
     else parts.push(`${k}: ${r(v)}`);
   }
   return parts.join(", ");
+}
+
+/** wipe/wipeUp: GSAP tween biến CSS (số thuần, tất định); clip-path đọc biến qua luật CSS riêng của phần tử. */
+const WIPE_VAR = { wipe: "--cvs-wx", wipeUp: "--cvs-wy" } as const;
+
+export function wipeCss(anims: Anim[]): string {
+  const axes = new Map<string, Set<"wipe" | "wipeUp">>();
+  for (const a of anims)
+    for (const k of ["wipe", "wipeUp"] as const)
+      if (a.from[k] !== undefined || a.to[k] !== undefined) {
+        if (!axes.has(a.id)) axes.set(a.id, new Set());
+        axes.get(a.id)!.add(k);
+      }
+  const pc = (on: boolean, v: string) => (on ? `calc((1 - var(${v}, 1)) * 100%)` : "0%");
+  return [...axes].map(([id, s]) => `#${id} { clip-path: inset(${pc(s.has("wipeUp"), WIPE_VAR.wipeUp)} ${pc(s.has("wipe"), WIPE_VAR.wipe)} 0% 0%); }`).join("\n");
 }
 
 function pick(p: AnimProps, keys: (keyof AnimProps)[]): AnimProps {
@@ -64,7 +80,11 @@ export function compileAnims(anims: Anim[], T: SceneTimingLike): string[] {
         if (group.length === 0) continue;
         const from = gsapVars(pick(a.from, group));
         const to = gsapVars(pick(a.to, group));
-        lines.push(`tl.fromTo("#${id}", { ${from} }, { ${to}, duration: ${durExpr(a)}, ease: "${a.ease}"${imm ? "" : ", immediateRender: false"} }, ${timeExpr(a.at)});`);
+        // máy quay (-cam): giữ transform 2D như Remotion (không tách lớp GPU làm mờ chữ khi phóng)
+        const f3d = id.endsWith("-cam") ? ", force3D: false" : "";
+        // strokeDashoffset là px: GSAP mặc định làm tròn (autoRound) → pathLength=1 nhảy 1 → 0, lệch Remotion
+        const ar = group.includes("dash") ? ", autoRound: false" : "";
+        lines.push(`tl.fromTo("#${id}", { ${from} }, { ${to}, duration: ${durExpr(a)}, ease: "${a.ease}"${f3d}${ar}${imm ? "" : ", immediateRender: false"} }, ${timeExpr(a.at)});`);
       }
     }
   }
@@ -89,6 +109,7 @@ export function compileScene(spec: SceneSpec, T: SceneTiming | SceneTimingLike, 
 <style>
 #root { position: absolute; inset: 0; }
 ${spec.css}
+${wipeCss(spec.anims)}
 </style>
 <div id="root" data-composition-id="${sid}" data-width="1920" data-height="1080">
 <div id="${stage}" class="cvs-scene">

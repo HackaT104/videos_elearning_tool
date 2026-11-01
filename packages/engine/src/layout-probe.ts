@@ -25,16 +25,25 @@ export const LAYOUT_PROBE_JS = String.raw`
     }
     return true;
   }
+  // máy quay đẩy chậm (.cvs-cam) chạy từ data-cam-from (< 1) lên 1: đo bố cục ở scale 1 (lúc lớn nhất → vùng an toàn) rồi trả lại
+  // transform; cỡ chữ tính ở scale nhỏ nhất
   window.__cvsLayout = function layout(host) {
+    if (!host) return [];
+    const cams = [...host.querySelectorAll(".cvs-cam")];
+    const saved = cams.map((c) => c.style.transform);
+    cams.forEach((c) => { c.style.transform = "none"; });
+    try { return measure(host); } finally { cams.forEach((c, i) => { c.style.transform = saved[i]; }); }
+  };
+  function measure(host) {
     const issues = [];
-    if (!host) return issues;
     const texts = [...host.querySelectorAll(".t")].filter(visible).filter((el) => el.textContent.trim());
     const boxes = texts.map((el) => ({ el, r: textRect(el) }));
     for (const { el, r } of boxes) {
       const id = el.id || (el.closest("[id]") || {}).id || "?";
       const src = el.classList.contains("src-line");
-      const fs = parseFloat(getComputedStyle(el).fontSize);
-      if (fs < (src ? 22 : 27.5)) issues.push({ kind: "small-text", id, detail: "Chữ " + fs.toFixed(0) + "px" });
+      const cam = el.closest("[data-cam-from]");
+      const fs = parseFloat(getComputedStyle(el).fontSize) * (cam ? Math.min(1, Number(cam.getAttribute("data-cam-from")) || 1) : 1);
+      if (fs < (src ? 22 : 27.5)) issues.push({ kind: "small-text", id, detail: "Chữ " + fs.toFixed(1) + "px" });
       if (r.x0 < SAFE.x0 - 1 || r.x1 > SAFE.x1 + 1 || r.y0 < SAFE.y0 - 1 || r.y1 > SAFE.y1 + 1)
         issues.push({ kind: "overflow-safe", id, detail: "Tràn vùng an toàn: " + [r.x0, r.y0, r.x1, r.y1].map(Math.round).join(",") });
       if (el.scrollWidth > el.clientWidth + 2) issues.push({ kind: "clipped", id, detail: "Chữ tràn ngang khỏi khung (" + el.scrollWidth + " > " + el.clientWidth + ")" });
@@ -59,6 +68,6 @@ export const LAYOUT_PROBE_JS = String.raw`
       if (c.x1 > 1920 || c.y1 > 1080) issues.push({ kind: "overflow-safe", id: card.id || "?", detail: "Thẻ tràn khung hình" });
     }
     return issues;
-  };
+  }
 })();
 `;
