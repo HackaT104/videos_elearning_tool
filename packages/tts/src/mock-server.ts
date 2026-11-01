@@ -44,3 +44,37 @@ export function startMockCit(port = 8001, opts: { failTimes?: number; apiKey?: s
   server.calls = 0;
   return new Promise((resolve) => server.listen(port, "127.0.0.1", () => resolve(server)));
 }
+
+/** Máy chủ ZeroTTS GIẢ LẬP (chỉ cho test/demo): cùng API với packages/tts/zerotts/server.py, WAV 48 kHz, không áp dụng speed. */
+export function startMockZerotts(port = 8002, opts: { failTimes?: number } = {}): Promise<Server & { calls: number; bodies: any[] }> {
+  let fails = opts.failTimes ?? 0;
+  const ids = ["maichi", "baotrang", "kimoanh", "hamy", "giahuy", "huuduc", "quangminh", "tiendat"];
+  const server = createServer((req, res) => {
+    const s = server as Server & { calls: number; bodies: any[] };
+    s.calls++;
+    const json = (code: number, j: unknown) => res.writeHead(code, { "Content-Type": "application/json" }).end(JSON.stringify(j));
+    if (req.method === "GET" && req.url === "/health") return json(200, { status: "ok", sample_rate: 48000, fake: true });
+    if (req.method === "GET" && req.url === "/v1/voices") return json(200, { object: "list", data: ids.map((id, i) => ({ id, name: id, gender: i < 4 ? "nữ" : "nam", tags: ["trẻ"] })) });
+    if (req.method === "POST" && req.url === "/v1/audio/speech-with-segments") {
+      let body = "";
+      req.on("data", (d) => (body += d));
+      req.on("end", () => {
+        if (fails > 0) {
+          fails--;
+          res.writeHead(503).end("busy");
+          return;
+        }
+        const j = JSON.parse(body);
+        s.bodies.push(j);
+        if (!ids.includes(j.voice)) return json(400, { detail: `Không có giọng '${j.voice}'` });
+        const { pcm, cues } = mockSpeech(String(j.input ?? ""), 1, 48000);
+        json(200, { audio_base64: pcmToWav(pcm, 48000).toString("base64"), sample_rate: 48000, segments: cues, speed_applied: false });
+      });
+      return;
+    }
+    res.writeHead(404).end("not found");
+  }) as Server & { calls: number; bodies: any[] };
+  server.calls = 0;
+  server.bodies = [];
+  return new Promise((resolve) => server.listen(port, "127.0.0.1", () => resolve(server)));
+}

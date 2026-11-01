@@ -75,6 +75,42 @@ export function pcmToWav(pcm: Float32Array, sampleRate = SAMPLE_RATE): Buffer {
   return Buffer.concat([h, data]);
 }
 
+/** WAV PCM 16-bit mono (như pcmToWav / máy chủ ZeroTTS trả về) → PCM float32 + tần số mẫu. */
+export function wavToPcm(buf: Buffer): { pcm: Float32Array; sampleRate: number } {
+  if (buf.length < 12 || buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WAVE") throw new Error("Không phải file WAV");
+  let p = 12;
+  let sampleRate = 0;
+  let fmtOk = false;
+  while (p + 8 <= buf.length) {
+    const id = buf.toString("ascii", p, p + 4);
+    const size = buf.readUInt32LE(p + 4);
+    if (id === "fmt ") {
+      fmtOk = buf.readUInt16LE(p + 8) === 1 && buf.readUInt16LE(p + 10) === 1 && buf.readUInt16LE(p + 22) === 16;
+      sampleRate = buf.readUInt32LE(p + 12);
+    } else if (id === "data") {
+      if (!fmtOk) throw new Error("WAV phải là PCM 16-bit mono");
+      const n = Math.floor(Math.min(size, buf.length - p - 8) / 2);
+      const pcm = new Float32Array(n);
+      for (let i = 0; i < n; i++) pcm[i] = buf.readInt16LE(p + 8 + i * 2) / 0x8000;
+      return { pcm, sampleRate };
+    }
+    p += 8 + size + (size & 1);
+  }
+  throw new Error("WAV thiếu phần dữ liệu");
+}
+
+/** Đổi tốc độ đọc, giữ cao độ (ffmpeg atempo, 0,5–2×). */
+export async function atempo(pcm: Float32Array, sampleRate: number, speed: number): Promise<Float32Array> {
+  const s = Math.max(0.5, Math.min(2, speed));
+  if (Math.abs(s - 1) < 1e-3 || pcm.length === 0) return pcm;
+  const r = await ffmpeg(
+    ["-f", "f32le", "-ar", String(sampleRate), "-ac", "1", "-i", "pipe:0", "-filter:a", `atempo=${s.toFixed(4)}`, "-f", "f32le", "-acodec", "pcm_f32le", "pipe:1"],
+    Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength),
+  );
+  const b = r.stdout;
+  return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+}
+
 /** WAV → MP3 160 kbps. */
 export async function wavToMp3(wav: string, mp3: string): Promise<void> {
   await ffmpeg(["-i", wav, "-codec:a", "libmp3lame", "-b:a", "160k", mp3]);

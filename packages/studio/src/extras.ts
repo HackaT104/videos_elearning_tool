@@ -10,7 +10,7 @@ import { addFile, getProject, getVideo, glossaryFor, listVideos, paths, setVideo
 import { effectiveDesign, qaTimes } from "@cvs/engine";
 import { hfBuild, hfPreview, launchBrowser } from "@cvs/engine-hf";
 import { THEME_IDS, THEMES } from "@cvs/themes";
-import { CitClient, mockGenerate, probe, synthesizeSample } from "@cvs/tts";
+import { CitClient, ensureZerottsRunning, mockGenerate, probe, synthesizeSample, ZerottsClient } from "@cvs/tts";
 import { currentTiming, makeCustomScene, stepBuild, stepQa, type Ctx } from "./pipeline";
 
 // ---------- Xuất ----------
@@ -109,12 +109,16 @@ export async function voiceSamples(text: string, voices: VoiceConfig[]): Promise
   const dir = paths.samples();
   mkdirSync(dir, { recursive: true });
   const cit = new CitClient();
+  const zerotts = new ZerottsClient();
+  const mock = process.env.CVS_TTS_MOCK === "1";
   const tts = createNormalizer()(text).tts;
   const out: { voice: VoiceConfig; file: string; error?: string }[] = [];
   for (const v of voices) {
     const file = join(dir, `${v.provider}_${createHash("sha1").update(JSON.stringify([v, tts])).digest("hex").slice(0, 16)}.mp3`);
     try {
-      if (!existsSync(file)) await synthesizeSample(tts, v, file, { cit, generator: process.env.CVS_TTS_MOCK === "1" ? mockGenerate : undefined });
+      if (!existsSync(file) && v.provider === "zerotts" && !mock && !(await ensureZerottsRunning()))
+        throw new Error("ZeroTTS chưa cài hoặc chưa chạy – bấm Cài ZeroTTS trên trang Giọng đọc.");
+      if (!existsSync(file)) await synthesizeSample(tts, v, file, { cit, zerotts, generator: mock ? mockGenerate : undefined });
       out.push({ voice: v, file });
     } catch (e) {
       out.push({ voice: v, file: "", error: (e as Error).message });

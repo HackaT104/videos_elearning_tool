@@ -5,7 +5,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { claimNextJob, getDb, getJob, getProject, paths, requeueStale, STORAGE, updateJob, type Job } from "@cvs/db";
 import { startApi } from "./api";
-import { ensureCitRunning, startCitWatchdog, stopCit } from "@cvs/tts";
+import { ensureCitRunning, ensureZerottsRunning, installZerotts, startCitWatchdog, startZerottsWatchdog, stopCit, stopZerotts, zerottsInstalled } from "@cvs/tts";
 import { assertStyleChosen, aiWriteScript, loadSavedClaudeKey, runAgent, JOB_STEPS, makeCustomScene, reviseWithNote, runSteps, Stopped, STEP_LABELS, stylePreview, voiceSamples, type Ctx, type StepName } from "@cvs/studio";
 
 const MAX = Number(process.env.CVS_WORKER_CONCURRENCY ?? 4);
@@ -141,5 +141,17 @@ if (process.env.CVS_TTS_MOCK !== "1" && process.env.CVS_CIT_MANAGE !== "0") {
     .catch((e) => console.log(`CIT Voice Studio: ${e.message}`));
   startCitWatchdog();
   for (const sig of ["SIGINT", "SIGTERM", "exit"] as const) process.on(sig, () => { stopCit(); if (sig !== "exit") process.exit(0); });
+}
+// ZeroTTS (giọng thứ hai, tuỳ chọn): KHÔNG tự cài (tải ~300–900 MB) trừ khi CVS_ZEROTTS_AUTO_INSTALL=1; đã cài thì tự chạy.
+if (process.env.CVS_TTS_MOCK !== "1" && process.env.CVS_ZEROTTS_MANAGE !== "0") {
+  const autoInstall = process.env.CVS_ZEROTTS_AUTO_INSTALL === "1";
+  if (zerottsInstalled() || autoInstall) {
+    (zerottsInstalled() ? Promise.resolve() : installZerotts().then(() => undefined))
+      .then(() => ensureZerottsRunning())
+      .then((ok) => console.log(ok ? "ZeroTTS: đang chạy" : "ZeroTTS: chưa chạy được – xem trang Giọng đọc"))
+      .catch((e) => console.log(`ZeroTTS: ${e.message}`));
+  }
+  startZerottsWatchdog();
+  for (const sig of ["SIGINT", "SIGTERM", "exit"] as const) process.on(sig, () => { stopZerotts(); if (sig !== "exit") process.exit(0); });
 }
 loop();

@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { THEMES, checkThemeFonts, fontFaceCss } from "@cvs/themes";
-import { CitClient, FFMPEG, FFPROBE, findCitExecutable, installCit, run } from "@cvs/tts";
+import { CitClient, FFMPEG, FFPROBE, findCitExecutable, installCit, installZerotts, run, zerottsInstalled } from "@cvs/tts";
 
 const ROOT = join(import.meta.dirname, "..");
 const fontsOnly = process.argv.includes("--fonts-only");
@@ -54,6 +54,19 @@ else {
   }
 }
 console.log("    Dùng CIT Voice Studio là đồng ý Điều khoản sử dụng: https://github.com/Cuongyd196/cit-voice-studio/blob/main/DIEU-KHOAN.md");
+if (process.env.CVS_ZEROTTS_AUTO_INSTALL === "1") {
+  console.log("\n[4b] ZeroTTS (giọng thứ hai, MIT – tuỳ chọn vì CVS_ZEROTTS_AUTO_INSTALL=1)");
+  if (zerottsInstalled()) ok("Đã cài ZeroTTS");
+  else {
+    try {
+      let last = -10;
+      const model = await installZerotts((p, m) => { if (p - last >= 10 || p === 100) { last = p; console.log(`    ${p}% ${m}`); } });
+      ok(`Đã cài ZeroTTS (mô hình: ${model})`);
+    } catch (e) {
+      warn(`Không cài được ZeroTTS: ${(e as Error).message}. Có thể cài sau trên trang Giọng đọc.`);
+    }
+  }
+}
 console.log(process.env.ANTHROPIC_API_KEY ? "  ✓ Có ANTHROPIC_API_KEY" : "  ⚠ Chưa có ANTHROPIC_API_KEY trong .env – thiết kế cảnh dùng chế độ tự động, không viết kịch bản bằng AI.");
 
 console.log("\n[5] Dựng giao diện");

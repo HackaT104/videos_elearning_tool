@@ -10,7 +10,7 @@ import { autoDesign, qaTimes, type BuildInput, type PreviewResult, type RenderEn
 import { contactSheet, createHyperFramesEngine, launchBrowser, lintErrors, lintScene } from "@cvs/engine-hf";
 import { createRemotionEngine, lintRemotionScene } from "@cvs/engine-rmt";
 import { audioQa, contentQa, layoutItems, makeReport, type QaItem, type QaReport } from "@cvs/qa";
-import { CitClient, ensureCitRunning, loadManifest, mockGenerate, synthesizeVideo } from "@cvs/tts";
+import { CitClient, ensureCitRunning, ensureZerottsRunning, loadManifest, mockGenerate, synthesizeVideo, ZerottsClient } from "@cvs/tts";
 
 export type StepName = "normalize" | "voice" | "timing" | "design" | "build" | "qa" | "render" | "final-qa";
 export const STEP_LABELS: Record<StepName, string> = {
@@ -73,8 +73,15 @@ export async function stepVoice(ctx: Ctx, force = false) {
     }
     if (!st.ok) throw new Error("CIT Voice Studio chưa chạy được. Vào trang Giọng đọc CIT để cài/khởi động lại, rồi bấm Thử lại.");
   }
+  const zerotts = new ZerottsClient();
+  if (video.voice.provider === "zerotts" && !useMock && !(await zerotts.health()).ok) {
+    ctx.progress("voice", 1, "Đang khởi động ZeroTTS…");
+    if (!(await ensureZerottsRunning().catch(() => false)))
+      throw new Error("ZeroTTS chưa chạy được. Vào trang Giọng đọc, chọn ZeroTTS để cài/khởi động lại, rồi bấm Thử lại.");
+  }
   await synthesizeVideo(video, voDir, {
     cit,
+    zerotts,
     force,
     generator: useMock ? mockGenerate : undefined,
     onProgress: (p) => {

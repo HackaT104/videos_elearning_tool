@@ -24,6 +24,7 @@
 | Internet lần cài đầu | Tải thư viện, ffmpeg, Chromium cho Playwright/HyperFrames/Remotion. |
 | Khóa Claude API (tùy chọn) | Để viết kịch bản bằng AI, thiết kế cảnh bằng AI, soát hình. Không có khóa: thiết kế cảnh dùng chế độ tự động. |
 | Python + `pip install edge-tts` (tùy chọn) | Chỉ cho giọng dự phòng Edge TTS. |
+| Python ≥ 3.10 (tùy chọn) | Chỉ cho giọng thứ hai ZeroTTS (ứng dụng tự tạo venv riêng khi bạn bấm Cài). |
 
 **Chạy**
 
@@ -51,6 +52,12 @@ Không có Windows? Trên macOS/Linux: `pnpm install && pnpm run cai-dat && pnpm
 | `CVS_STORAGE` | `./storage` | Thư mục lưu trữ |
 | `CVS_TTS_MOCK` | `0` | `1` = giọng **giả lập** (chỉ để thử luồng khi chưa có CIT) |
 | `PYTHON` | `python` | Python cho Edge TTS |
+| `CVS_ZEROTTS_AUTO_INSTALL` | `0` | `1` = tự cài ZeroTTS khi khởi động/`pnpm run cai-dat` (mặc định chỉ cài khi bấm nút) |
+| `CVS_ZEROTTS_MANAGE` | `1` | `0` = không tự chạy/theo dõi máy chủ ZeroTTS |
+| `CVS_ZEROTTS_INT8` | `1` | Dựng bản int8 khi cài (nhanh hơn trên CPU thường); `0` = dùng bản fp32 |
+| `CVS_ZEROTTS_URL` / `CVS_ZEROTTS_PORT` | `http://127.0.0.1:8002` / `8002` | Địa chỉ máy chủ ZeroTTS cục bộ |
+| `CVS_ZEROTTS_PYTHON` | (trống) | Python ≥ 3.10 dùng để tạo venv (trống = `py -3` / `python3` / `python`) |
+| `CVS_ZEROTTS_DIR` | `vendor/zerotts` | Thư mục venv, mô hình, nhật ký `server.log` |
 
 ---
 
@@ -111,6 +118,16 @@ Vì vậy cùng tham số cho cùng hình ở cả hai bộ dựng (đo được
 - Cắt im lặng đầu/cuối (−45 dB, ≥ 0,15 s; giữ 0,05 s đầu, 0,2 s cuối); **giãn nhịp** chỉ tại chỗ ngắt hơi có sẵn (RMS < −40 dB, ≥ 0,08 s, ±1,2 s quanh mốc câu) cho đủ `pace.gap` – không bao giờ cắt/chèn giữa từ; WAV → MP3 160 kbps.
 - `vo/manifest.json`: `hash = sha1(provider, voice, speed, gap, tts)`; chỉ tạo lại cảnh đổi hash; file giọng có hash trong tên (tránh lưu đệm bản cũ); ghi nguyên tử + kiểm tra hash.
 - Thời lượng cảnh = `lead + audioDur + tail`; mốc câu = `lead + cue`. Chưa có giọng: ước tính 3,1 tiếng/giây × tốc độ × hệ số cấp độ, đánh dấu `estimated`.
+
+### Giọng thứ hai: ZeroTTS
+
+[ZeroTTS](https://github.com/zeroweight-ai/ZeroTTS) – mô hình đọc tiếng Việt chạy CPU (ONNX, không cần GPU), **mã và trọng số giấy phép MIT**, âm thanh 48 kHz. CIT Voice Studio vẫn là mặc định; ZeroTTS là lựa chọn thêm trên trang **Giọng đọc** (nút "ZeroTTS (MIT, 8 giọng)").
+
+- **Giọng:** nữ `maichi` (Mai Chi), `baotrang` (Bảo Trang), `kimoanh` (Kim Oanh), `hamy` (Hà My); nam `giahuy` (Gia Huy), `huuduc` (Hữu Đức), `quangminh` (Quang Minh), `tiendat` (Tiến Đạt). Nghe thử / Dùng giọng này / áp dụng theo dự án, cấp độ, từng video như giọng CIT.
+- **Cài:** chỉ khi bấm **Cài ZeroTTS** (hoặc đặt `CVS_ZEROTTS_AUTO_INSTALL=1`). Ứng dụng tìm Python ≥ 3.10 (`py -3` / `python3` / `python`; Windows chưa có thì cài từ python.org, tích *Add python.exe to PATH*), tạo venv `vendor/zerotts/.venv`, `pip install zerotts fastapi uvicorn` (+ `onnx` cho bước int8), tải mô hình từ Hugging Face vào `vendor/zerotts/hf` (~300–900 MB), rồi dựng **bản int8** vào `vendor/zerotts/model-int8` bằng `packages/tts/zerotts/quantize_onnx_int8.py` (script của ZeroTTS; RTF giảm khoảng một nửa trên CPU DDR4 thường; lỗi int8 thì tự dùng bản fp32). Tắt int8: `CVS_ZEROTTS_INT8=0`.
+- **Chạy:** đã cài thì worker tự chạy `packages/tts/zerotts/server.py` tại `127.0.0.1:8002` (chỉ máy cục bộ), chờ `/health`, kiểm tra 30 s/lần và bật lại nếu tắt. API: `GET /health`, `GET /v1/voices`, `POST /v1/audio/speech-with-segments {input, voice, speed?, temperature?, seed?}` → `{audio_base64 (WAV 16-bit 48 kHz), sample_rate, segments:[{text,start,end}]}`; mỗi đoạn là một câu (câu dài > ~15 s được chia nhỏ), mốc tính từ số mẫu thật, giữa các đoạn chèn 0,15 s im lặng; một yêu cầu tại một thời điểm.
+- **Đọc:** máy chủ gọi `normalize_vi_text` (số, ngày tháng, viết tắt → chữ) và `chunk_text(normalize_punctuation(…))` trước khi đọc. Mốc câu đi qua đúng đường gán mốc/cắt im lặng/giãn nhịp như CIT. **ZeroTTS không có tham số tốc độ**: ứng dụng đổi tốc độ bằng ffmpeg `atempo` (giữ cao độ) và co mốc tương ứng. Độ biểu cảm (temperature) → `audio_temperature`; seed → cố định ngẫu nhiên. Thẻ CIT: `[nghỉ 2s]`/`[nghỉ 500ms]` → chèn khoảng lặng (tối đa 2,4 s), thẻ biểu cảm (`[cười]`…) bị bỏ.
+- **Sự cố:** xem `vendor/zerotts/server.log`; bấm "Khởi động lại" trên trang Giọng đọc; cài lại = xoá `vendor/zerotts` rồi bấm Cài. Giấy phép: xem `THIRD-PARTY.md`.
 
 ### QA tự động (chặn xuất nếu không đạt)
 

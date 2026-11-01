@@ -16,7 +16,10 @@ import {
 import {
   archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
 } from "@cvs/studio";
-import { CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, installCit, restartCit } from "@cvs/tts";
+import {
+  CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, ensureZerottsRunning, installCit, installZerotts, restartCit, restartZerotts,
+  ZEROTTS_REPO, ZEROTTS_VOICES, ZerottsClient, zerottsManagerState,
+} from "@cvs/tts";
 import { DEFAULT_FONT_PAIR, FONT_PAIRS, fontFaceUrlCss, fontFilePath, THEMES, THEME_IDS } from "@cvs/themes";
 import { TEMPLATES, ICON_NAMES } from "@cvs/engine";
 import { aiAvailable } from "@cvs/ai";
@@ -36,6 +39,7 @@ app.get("/meta", (c) =>
     defaultGlossary: DEFAULT_GLOSSARY,
     ai: aiAvailable(),
     edgeVoices: EDGE_VOICES,
+    zerottsVoices: ZEROTTS_VOICES,
     fonts: FONT_PAIRS.map((p) => ({ id: p.id, name: p.name, description: p.description, display: p.display.family, body: p.body.family, displayWeight: p.display.weight, generic: p.display.generic ?? "sans-serif" })),
   }),
 );
@@ -85,7 +89,35 @@ app.post("/cit/install", (c) => {
   return c.json({ ok: true });
 });
 app.post("/cit/restart", async (c) => c.json({ ok: await restartCit() }));
-app.get("/tts/voices", (c) => c.json(listVoices(c.req.query("provider"))));
+// ZeroTTS: 8 giọng cố định – hiện được cả khi máy chủ chưa chạy (chưa có trong bộ nhớ đệm).
+const zerottsRows = () => ZEROTTS_VOICES.map((v) => ({ provider: "zerotts", id: v.id, name: v.name, gender: v.gender ?? null, region: null, description: v.description ?? null, cloned: 0 }));
+app.get("/tts/voices", (c) => {
+  const provider = c.req.query("provider");
+  const rows = listVoices(provider);
+  if ((!provider || provider === "zerotts") && !rows.some((r) => r.provider === "zerotts")) rows.push(...zerottsRows());
+  return c.json(rows);
+});
+app.get("/zerotts/status", async (c) => {
+  const z = new ZerottsClient({ retries: 0 });
+  const st = await z.status();
+  if (st.ok) {
+    try {
+      cacheVoices("zerotts", await z.voices());
+    } catch {
+      /* bỏ qua */
+    }
+  }
+  return c.json({ ...st, url: z.baseUrl, mock: process.env.CVS_TTS_MOCK === "1", manager: zerottsManagerState(), repo: ZEROTTS_REPO });
+});
+app.post("/zerotts/install", (c) => {
+  // chạy nền: venv + pip + tải mô hình (~300–900 MB) + int8; giao diện đọc tiến độ qua /zerotts/status
+  if (zerottsManagerState().installing) return c.json({ ok: true, already: true });
+  installZerotts()
+    .then(() => ensureZerottsRunning())
+    .catch(() => undefined);
+  return c.json({ ok: true });
+});
+app.post("/zerotts/restart", async (c) => c.json({ ok: await restartZerotts() }));
 app.post("/open-folder", async (c) => {
   const { path } = await c.req.json();
   const p = resolve(path);
@@ -157,14 +189,18 @@ app.get("/projects/:id/progress", async (c) => {
   if (!p) return c.json({ error: "Không tìm thấy dự án" }, 404);
   const vids = listVideos(id).filter((v) => v.include && !v.existing);
   const reading = vids.reduce((n, v) => n + readingIssues(v.data).length, 0);
-  const cit = await new CitClient().status();
+  // "citOk" = giọng sẵn sàng cho các nguồn giọng mà video đang dùng (CIT và/hoặc ZeroTTS)
+  const used = new Set(vids.map((v) => v.data.voice.provider));
+  const cit = used.has("cit") || used.size === 0 ? await new CitClient().status() : { ok: true };
+  const z = zerottsManagerState();
+  const zOk = !used.has("zerotts") || z.running || z.installed;
   return c.json({
     uploaded: listFiles(id).length > 0,
     videos: vids.length,
     reading,
     styleConfirmed: !!p.settings.styleConfirmed,
     style: p.settings.style,
-    citOk: cit.ok || process.env.CVS_TTS_MOCK === "1",
+    citOk: (cit.ok && zOk) || process.env.CVS_TTS_MOCK === "1",
     rendered: vids.filter((v) => existsSync(paths.render(id, v.key))).length,
     approved: vids.filter((v) => v.approved).length,
   });

@@ -1,6 +1,6 @@
 // Cấu hình giọng theo cấp độ (mục 5.3) – người dùng chỉnh được.
 
-import type { LevelTier, Pace, VoiceConfig } from "./types";
+import type { LevelTier, Pace, VoiceConfig, VoiceProvider } from "./types";
 
 const env = (k: string) => (typeof process !== "undefined" ? process.env?.[k] : undefined) || undefined;
 /** Giọng mặc định (đổi trong .env: CVS_VOICE_FEMALE / CVS_VOICE_MALE). */
@@ -8,6 +8,8 @@ export const VOICE_FEMALE = env("CVS_VOICE_FEMALE") ?? "Trúc Ly";
 export const VOICE_MALE = env("CVS_VOICE_MALE") ?? "Hải Đăng";
 
 export const EDGE_VOICES = { female: "vi-VN-HoaiMyNeural", male: "vi-VN-NamMinhNeural" };
+/** Giọng mặc định khi chuyển sang ZeroTTS (8 giọng có sẵn: maichi, baotrang, kimoanh, hamy, giahuy, huuduc, quangminh, tiendat). */
+export const ZEROTTS_DEFAULT_VOICES = { female: "maichi", male: "quangminh" };
 
 export type LevelPreset = {
   tier: LevelTier;
@@ -32,10 +34,11 @@ export function tierOfLevel(level: string): LevelTier {
   return n <= 1 ? "co-ban" : n === 2 ? "trung-cap" : "chuyen-sau";
 }
 
-export function defaultVoiceFor(level: string, videoIndex: number, provider: "cit" | "edge" = "cit"): VoiceConfig {
+export function defaultVoiceFor(level: string, videoIndex: number, provider: VoiceProvider = "cit"): VoiceConfig {
   const p = LEVEL_PRESETS[tierOfLevel(level)];
   let voiceId = p.voice === "alternate" ? (videoIndex % 2 === 0 ? VOICE_FEMALE : VOICE_MALE) : p.voice;
   if (provider === "edge") voiceId = voiceId === VOICE_FEMALE ? EDGE_VOICES.female : EDGE_VOICES.male;
+  if (provider === "zerotts") voiceId = voiceId === VOICE_FEMALE ? ZEROTTS_DEFAULT_VOICES.female : ZEROTTS_DEFAULT_VOICES.male;
   return { provider, voiceId, speed: p.speed };
 }
 

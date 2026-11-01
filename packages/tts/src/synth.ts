@@ -7,6 +7,7 @@ import { readJson, sceneVoiceHash, stripTtsTags, voiceExtras, writeFileAtomic, w
 import { alignSentences } from "./align";
 import { CitClient } from "./cit";
 import { edgeGenerate } from "./edge";
+import { ZerottsClient } from "./zerotts";
 import { decodeToPcm, pcmToWav, SAMPLE_RATE, wavToMp3 } from "./ffmpeg";
 import { pace, shiftSpans, trimSilence } from "./silence";
 
@@ -14,6 +15,7 @@ export const MANIFEST_VERSION = 1;
 
 export type SynthOptions = {
   cit?: CitClient;
+  zerotts?: ZerottsClient;
   /** Tạo lại kể cả khi hash khớp. */
   force?: boolean;
   /** Chỉ các cảnh này. */
@@ -36,9 +38,11 @@ function rawHash(voice: VoiceConfig, text: string) {
   return createHash("sha1").update([voice.provider, voice.voiceId, voice.speed.toFixed(3), ...(voiceExtras(voice) ? [voiceExtras(voice)] : []), text].join("␞")).digest("hex").slice(0, 16);
 }
 
-export async function generateRaw(text: string, voice: VoiceConfig, opts: Pick<SynthOptions, "cit" | "generator">) {
+export async function generateRaw(text: string, voice: VoiceConfig, opts: Pick<SynthOptions, "cit" | "zerotts" | "generator">) {
   if (opts.generator) return opts.generator(text, voice);
   if (voice.provider === "edge") return edgeGenerate(stripTtsTags(text), voice.voiceId, voice.speed);
+  if (voice.provider === "zerotts")
+    return (opts.zerotts ?? new ZerottsClient()).generate({ text, voice: voice.voiceId, speed: voice.speed, temperature: voice.temperature, seed: voice.seed });
   const cit = opts.cit ?? new CitClient();
   return cit.generate({
     text,
@@ -130,7 +134,7 @@ export async function synthesizeVideo(video: Video, voDir: string, opts: SynthOp
 }
 
 /** "Nghe thử": đọc một câu mẫu → MP3. */
-export async function synthesizeSample(text: string, voice: VoiceConfig, outMp3: string, opts: Pick<SynthOptions, "cit" | "generator"> = {}) {
+export async function synthesizeSample(text: string, voice: VoiceConfig, outMp3: string, opts: Pick<SynthOptions, "cit" | "zerotts" | "generator"> = {}) {
   const g = await generateRaw(text, voice, opts);
   const raw = outMp3.replace(/\.mp3$/, `.raw.${g.format === "mp3" ? "mp3" : "wav"}`);
   writeFileSync(raw, g.audio);

@@ -30,7 +30,7 @@ export function sceneVoiceHash(voice: VoiceConfig, scene: Pick<Scene, "sentences
   return h.digest("hex").slice(0, 16);
 }
 
-/** Phần tuỳ chọn CIT đưa vào hash (để trống khi dùng mặc định → hash cũ không đổi). */
+/** Phần tuỳ chọn CIT/ZeroTTS đưa vào hash (để trống khi dùng mặc định → hash cũ không đổi). Nhà cung cấp đã nằm trong hash riêng. */
 export function voiceExtras(v: VoiceConfig): string {
   const parts: string[] = [];
   if (v.temperature !== undefined) parts.push(`t${v.temperature}`);

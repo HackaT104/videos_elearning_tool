@@ -15,7 +15,7 @@ const STEPS: { slug: string; label: string; state: (p: Progress) => State; hint?
   { slug: "doc", label: "Chuẩn hoá cách đọc", state: (p) => (!p.videos ? "todo" : p.reading ? "warn" : "done"), hint: (p) => (p.reading ? `${p.reading} câu cần soát` : "đã chuẩn") },
   { slug: "kich-ban", label: "Kịch bản", state: (p) => (p.videos ? "done" : "todo") },
   { slug: "phong-cach", label: "Chọn phong cách", state: (p) => (p.styleConfirmed ? "done" : p.videos ? "warn" : "todo"), hint: (p) => (p.styleConfirmed ? "đã chọn" : "chưa chọn") },
-  { slug: "giong", label: "Giọng đọc CIT", state: (p) => (p.citOk ? "done" : "warn"), hint: (p) => (p.citOk ? "CIT sẵn sàng" : "CIT chưa chạy") },
+  { slug: "giong", label: "Giọng đọc", state: (p) => (p.citOk ? "done" : "warn"), hint: (p) => (p.citOk ? "Giọng sẵn sàng" : "Nguồn giọng chưa chạy") },
   { slug: "san-xuat", label: "Sản xuất", state: (p) => (p.videos && p.rendered >= p.videos ? "done" : "todo"), hint: (p) => `${p.rendered}/${p.videos} đã render` },
   { slug: "duyet", label: "Xem và duyệt", state: (p) => (p.videos && p.approved >= p.videos ? "done" : "todo"), hint: (p) => `${p.approved}/${p.videos} đã duyệt` },
   { slug: "xuat", label: "Xuất", state: () => "todo" },

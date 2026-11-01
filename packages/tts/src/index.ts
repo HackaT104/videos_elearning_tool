@@ -7,3 +7,5 @@ export * from "./synth";
 export * from "./mock";
 export * from "./mock-server";
 export * from "./cit-manager";
+export * from "./zerotts";
+export * from "./zerotts-manager";
