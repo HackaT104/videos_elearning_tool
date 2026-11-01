@@ -10,6 +10,7 @@ import { autoDesign, qaTimes, type BuildInput, type PreviewResult, type RenderEn
 import { contactSheet, createHyperFramesEngine, launchBrowser, lintErrors, lintScene } from "@cvs/engine-hf";
 import { createRemotionEngine, lintRemotionScene } from "@cvs/engine-rmt";
 import { audioQa, contentQa, layoutItems, makeReport, type QaItem, type QaReport } from "@cvs/qa";
+import { fillIllustrations } from "./assets";
 import { CitClient, ensureCitRunning, ensureZerottsRunning, loadManifest, mockGenerate, synthesizeVideo, ZerottsClient } from "@cvs/tts";
 
 export type StepName = "normalize" | "voice" | "timing" | "design" | "build" | "qa" | "render" | "final-qa";
@@ -48,7 +49,7 @@ function load(ctx: Ctx): Video {
 
 function input(ctx: Ctx, video: Video, timing: Timing): BuildInput {
   const voDir = paths.vo(ctx.projectId, video.key);
-  return { video, timing, manifest: existsSync(join(voDir, "manifest.json")) ? loadManifest(voDir) : null, voDir, workDir: paths.work(ctx.projectId, video.key, video.engine) };
+  return { video, timing, manifest: existsSync(join(voDir, "manifest.json")) ? loadManifest(voDir) : null, voDir, workDir: paths.work(ctx.projectId, video.key, video.engine), assetsDir: paths.assets(ctx.projectId) };
 }
 
 export function currentTiming(projectId: string, video: Video): Timing {
@@ -113,6 +114,9 @@ export async function stepDesign(ctx: Ctx, o: { redesign?: boolean } = {}) {
     }
     scene.design = autoDesign(video, scene, i);
   }
+  // cảnh "illustration" AI chọn chỉ có brief → Claude vẽ SVG (lọc, lưu đệm theo brief + theme) trước khi build
+  if (video.scenes.some((s) => s.design?.template === "illustration")) ctx.progress("design", 95, "Vẽ hình minh hoạ");
+  await fillIllustrations(ctx.projectId, video, ctx.log);
   upsertVideo(ctx.projectId, video, { status: "designed" });
   ctx.progress("design", 100);
 }
@@ -148,6 +152,8 @@ export async function makeCustomScene(ctx: Ctx, sceneId: string, instruction?: s
 
 export async function stepBuild(ctx: Ctx) {
   const video = load(ctx);
+  // minh hoạ còn thiếu SVG (vừa sửa bằng AI / sửa tay brief) → vẽ trước khi dựng
+  if (await fillIllustrations(ctx.projectId, video, ctx.log)) upsertVideo(ctx.projectId, video);
   const timing = currentTiming(ctx.projectId, video);
   const eng = engineFor(video, ctx.settings, ctx.log);
   const r = await eng.build(input(ctx, video, timing));
@@ -272,10 +278,10 @@ export async function stepNormalize(ctx: Ctx, ignoreWarnings = false) {
   }
 }
 
-/** Chặn render khi người dùng chưa chọn phong cách từ 10 mẫu. */
+/** Chặn render khi người dùng chưa chọn phong cách từ các mẫu. */
 export function assertStyleChosen(ctx: Ctx, payload: { skipStyle?: boolean } = {}) {
   if (!payload.skipStyle && !ctx.settings.styleConfirmed) {
-    throw new Error('Chưa chọn phong cách video – vào bước "Chọn phong cách", chọn 1 trong 10 mẫu rồi bấm Thử lại.');
+    throw new Error('Chưa chọn phong cách video – vào bước "Chọn phong cách", chọn một mẫu rồi bấm Thử lại.');
   }
 }
 

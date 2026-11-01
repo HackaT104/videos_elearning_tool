@@ -49,6 +49,10 @@ export function styleOf(p: AnimProps): CSSProperties {
   if (p.blur !== undefined) s.filter = `blur(${p.blur}px)`;
   if (p.dash !== undefined) s.strokeDashoffset = p.dash;
   if (p.wipe !== undefined || p.wipeUp !== undefined) s.clipPath = wipeClip(p.wipe, p.wipeUp);
+  // cùng biến CSS như HyperFrames (luật clip-path riêng của cảnh, vd. chữ lộ chừa đệm dấu, đọc biến này)
+  const vars = s as Record<string, unknown>;
+  if (p.wipe !== undefined) vars["--cvs-wx"] = p.wipe;
+  if (p.wipeUp !== undefined) vars["--cvs-wy"] = p.wipeUp;
   return s;
 }
 

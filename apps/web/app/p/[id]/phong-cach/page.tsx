@@ -30,12 +30,13 @@ export default function PhongCach() {
   const shots = styles.data?.previews;
   const busy = !!styles.data?.job;
   const stamp = shots ? shots.styles.length : 0;
+  const nThemes = meta.data?.themes.length;
 
   const regenerate = () =>
     a.run(async () => {
       await api(`/projects/${pid}/jobs`, { method: "POST", json: { kind: "theme-preview", keys: [sample || vids.data?.[0]?.key || null] } });
       styles.reload();
-    }, "Đang dựng lại 10 mẫu từ video đã chọn…");
+    }, "Đang dựng lại các mẫu từ video đã chọn…");
   const confirm = () =>
     a.run(async () => {
       await api(`/projects/${pid}`, { method: "PATCH", json: { settings: { style: picked, styleConfirmed: true }, applyToVideos: true } });
@@ -66,7 +67,7 @@ export default function PhongCach() {
       <Msg msg={a.msg} />
       <div className="card mb-4">
         <p className="mb-3 text-sm text-soft">
-          10 mẫu dưới đây được dựng từ <b>chính một cảnh trong video của bạn</b>, cùng nội dung, chỉ khác phong cách. Bấm vào mẫu để phóng to, chọn một mẫu rồi bấm
+          {nThemes ? `${nThemes} mẫu` : "Các mẫu"} dưới đây được dựng từ <b>chính một cảnh trong video của bạn</b>, cùng nội dung, chỉ khác phong cách. Bấm vào mẫu để phóng to, chọn một mẫu rồi bấm
           <b> Dùng phong cách này</b>. Có thể đổi riêng từng video ở cuối trang.
         </p>
         <div className="mb-3 flex flex-wrap items-end gap-2">
@@ -75,8 +76,8 @@ export default function PhongCach() {
               {vids.data?.map((v) => <option key={v.key} value={v.key}>{v.key} – {v.title}</option>)}
             </select>
           </label>
-          <button className="btn" disabled={busy || a.busy || !vids.data?.length} onClick={regenerate}>{busy ? "Đang dựng 10 mẫu…" : "Dựng lại 10 mẫu"}</button>
-          {busy && <span className="text-xs text-soft">{styles.data?.job?.status === "queued" ? "Đang chờ lượt…" : "Đang dựng… (khoảng 1 phút)"}</span>}
+          <button className="btn" disabled={busy || a.busy || !vids.data?.length} onClick={regenerate}>{busy ? "Đang dựng các mẫu…" : "Dựng lại các mẫu"}</button>
+          {busy && <span className="text-xs text-soft">{styles.data?.job?.status === "queued" ? "Đang chờ lượt…" : "Đang dựng… (khoảng 2 phút)"}</span>}
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {meta.data?.themes.map((t) => {

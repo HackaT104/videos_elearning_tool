@@ -7,6 +7,7 @@ import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead, VideoPicker } from "@/components/ui";
 import { ScenePrompt } from "@/components/scene-prompt";
+import { SceneImage } from "@/components/scene-image";
 
 type Meta = { templates: { id: string; label: string; when: string; example: unknown }[] };
 
@@ -40,14 +41,14 @@ export default function KichBan() {
         {v.context && <details className="md:col-span-3 text-sm"><summary className="cursor-pointer text-soft">Ngữ cảnh tài liệu (bảng số liệu, mô tả infographic) – dùng cho bước dựng cảnh</summary><pre className="mt-1 whitespace-pre-wrap text-xs">{v.context}</pre></details>}
       </div>
       {v.scenes.map((s, si) => (
-        <SceneEditor key={s.id} scene={s} T={row.data?.timing?.scenes?.[si]} templates={meta.data?.templates ?? []} onChange={(fn) => upd((x) => fn(x.scenes[si]))} prompt={<ScenePrompt pid={pid} vkey={key} scene={s} busy={dirty} onQueued={row.reload} />} />
+        <SceneEditor key={s.id} pid={pid} scene={s} T={row.data?.timing?.scenes?.[si]} templates={meta.data?.templates ?? []} onChange={(fn) => upd((x) => fn(x.scenes[si]))} prompt={<ScenePrompt pid={pid} vkey={key} scene={s} busy={dirty} onQueued={row.reload} />} />
       ))}
       <button className="btn" onClick={() => upd((x) => { const n = x.scenes.length + 1; const last = x.scenes.at(-1); x.scenes.push({ id: `s${n}`, scriptStart: last?.scriptEnd ?? 0, scriptEnd: (last?.scriptEnd ?? 0) + 20, title: `Cảnh ${n}`, visual: "", onscreen: [], sentences: [] }); })}>+ Thêm cảnh</button>
     </div>
   );
 }
 
-function SceneEditor({ scene: s, T, templates, onChange, prompt }: { scene: Scene; T: any; templates: Meta["templates"]; onChange: (fn: (s: Scene) => void) => void; prompt: React.ReactNode }) {
+function SceneEditor({ pid, scene: s, T, templates, onChange, prompt }: { pid: string; scene: Scene; T: any; templates: Meta["templates"]; onChange: (fn: (s: Scene) => void) => void; prompt: React.ReactNode }) {
   const [params, setParams] = useState(JSON.stringify(s.design?.params ?? {}, null, 1));
   const [perr, setPerr] = useState<string | null>(null);
   useEffect(() => setParams(JSON.stringify(s.design?.params ?? {}, null, 1)), [s.design]);
@@ -81,6 +82,15 @@ function SceneEditor({ scene: s, T, templates, onChange, prompt }: { scene: Scen
         </tbody>
       </table>
       <button className="btn mt-2" onClick={() => onChange((y) => { y.sentences.push({ text: "", tts: "" }); })}>+ Câu</button>
+      <div className="mt-3">
+        <SceneImage
+          pid={pid}
+          sceneId={s.id}
+          current={s.design?.template === "image-focus" ? String(s.design.params.image ?? "") : undefined}
+          // đổi ảnh → bỏ vùng khoanh/phóng của ảnh cũ (toạ độ theo % ảnh cũ)
+          onPick={(id) => onChange((y) => { const same = y.design?.template === "image-focus" && y.design.params.image === id; y.design = { template: "image-focus", params: same ? y.design!.params : { image: id, fit: "contain" }, by: "user" }; })}
+        />
+      </div>
       <details className="mt-3">
         <summary className="cursor-pointer text-sm text-soft">Thiết kế cảnh: <b>{s.design?.template ?? "tự động"}</b> {s.design?.by ? `(${s.design.by === "ai" ? "AI" : s.design.by === "user" ? "người dùng" : "tự động"})` : ""}</summary>
         <div className="mt-2 grid gap-2 md:grid-cols-[260px_1fr]">

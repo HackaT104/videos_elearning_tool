@@ -38,6 +38,8 @@ export const HARNESS_JS = LAYOUT_PROBE_JS + String.raw`
       if (!window.__timelines || !window.__timelines[id]) errors.push(id + ": chưa đăng ký window.__timelines[\"" + id + "\"]");
     }
     await document.fonts.ready;
+    // ảnh của dự án (assets/img): chờ giải mã xong để khung chụp đầu tiên không trống
+    await Promise.all([...document.images].map((im) => (im.complete ? Promise.resolve() : new Promise((r) => { im.onload = im.onerror = r; })).then(() => im.decode && im.decode().catch(() => {}))));
   }
   function seek(t) {
     const hosts = [...document.querySelectorAll("[data-composition-src]")];

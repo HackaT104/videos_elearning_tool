@@ -14,7 +14,10 @@ export type FontPair = {
   bodyBold: FontRef;
 };
 
-const f = (family: string, pkg: string, weight: number, generic?: FontRef["generic"]): FontRef => ({ family, pkg, weight, ...(generic ? { generic } : {}) });
+const f = (family: string, pkg: string, weight: number, generic?: FontRef["generic"], viPadEm?: number): FontRef => ({ family, pkg, weight, ...(generic ? { generic } : {}), ...(viPadEm ? { viPadEm } : {}) });
+
+/** Phần dấu chồng tầng vượt trên hộp dòng (em) – mặt nạ/clip của chữ chuyển động chừa ít nhất chừng này. */
+export const viPad = (font: FontRef): number => font.viPadEm ?? 0.12;
 
 export const DEFAULT_FONT_PAIR = "theo-phong-cach";
 
@@ -71,7 +74,7 @@ export const FONT_PAIRS: FontPair[] = [
     id: "oswald",
     name: "Oswald + Source Sans 3",
     description: "Tiêu đề cao, hẹp, mạnh như bản tin; nội dung gọn.",
-    display: f("Oswald", "oswald", 600),
+    display: f("Oswald", "oswald", 600, undefined, 0.22),
     body: f("Source Sans 3", "source-sans-3", 400),
     bodyBold: f("Source Sans 3", "source-sans-3", 600),
   },
@@ -175,7 +178,7 @@ export const FONT_PAIRS: FontPair[] = [
     id: "anton",
     name: "Anton + Roboto",
     description: "Tiêu đề rất đậm, cô đọng; cảnh báo, thông điệp an toàn.",
-    display: f("Anton", "anton", 400),
+    display: f("Anton", "anton", 400, undefined, 0.19),
     body: f("Roboto", "roboto", 400),
     bodyBold: f("Roboto", "roboto", 600),
   },
@@ -191,7 +194,7 @@ export const FONT_PAIRS: FontPair[] = [
     id: "unbounded",
     name: "Unbounded + Inter",
     description: "Display rộng, công nghệ, hiện đại; chuyển đổi số, an ninh thông tin.",
-    display: f("Unbounded", "unbounded", 700),
+    display: f("Unbounded", "unbounded", 700, undefined, 0.25),
     body: f("Inter", "inter", 400),
     bodyBold: f("Inter", "inter", 600),
   },
@@ -207,15 +210,15 @@ export const FONT_PAIRS: FontPair[] = [
     id: "archivo",
     name: "Archivo",
     description: "Một họ chữ chắc chắn kiểu báo chí; trung tính, rõ ràng.",
-    display: f("Archivo", "archivo", 800),
-    body: f("Archivo", "archivo", 400),
-    bodyBold: f("Archivo", "archivo", 600),
+    display: f("Archivo", "archivo", 800, undefined, 0.15),
+    body: f("Archivo", "archivo", 400, undefined, 0.15),
+    bodyBold: f("Archivo", "archivo", 600, undefined, 0.15),
   },
   {
     id: "league-spartan",
     name: "League Spartan + Mulish",
     description: "Hình học đậm kiểu Futura; mạnh mẽ, tự tin.",
-    display: f("League Spartan", "league-spartan", 800),
+    display: f("League Spartan", "league-spartan", 800, undefined, 0.3),
     body: f("Mulish", "mulish", 400),
     bodyBold: f("Mulish", "mulish", 700),
   },
@@ -231,7 +234,7 @@ export const FONT_PAIRS: FontPair[] = [
     id: "bitter",
     name: "Bitter + Noto Sans",
     description: "Chân vuông dễ đọc trên màn hình; quy chuẩn, hướng dẫn kỹ thuật.",
-    display: f("Bitter", "bitter", 700, "serif"),
+    display: f("Bitter", "bitter", 700, "serif", 0.21),
     body: f("Noto Sans", "noto-sans", 400),
     bodyBold: f("Noto Sans", "noto-sans", 600),
   },
@@ -263,9 +266,9 @@ export const FONT_PAIRS: FontPair[] = [
     id: "mali",
     name: "Mali (viết tay tròn)",
     description: "Viết tay kiểu bảng trắng, tròn trịa, dễ đọc hơn chữ viết tay thường.",
-    display: f("Mali", "mali", 700, "cursive"),
-    body: f("Mali", "mali", 400, "cursive"),
-    bodyBold: f("Mali", "mali", 600, "cursive"),
+    display: f("Mali", "mali", 700, "cursive", 0.2),
+    body: f("Mali", "mali", 400, "cursive", 0.2),
+    bodyBold: f("Mali", "mali", 600, "cursive", 0.2),
   },
   {
     id: "dancing-script",

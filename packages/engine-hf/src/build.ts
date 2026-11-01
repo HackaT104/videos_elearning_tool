@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { sha1, writeFileAtomic, writeJsonAtomic, type Timing, type Video } from "@cvs/core";
-import { buildSceneSpec, scriptMarkdown, type BuildInput, type BuildResult } from "@cvs/engine";
+import { assetExists, buildSceneSpec, dropMissingImages, sceneImageRefs, scriptMarkdown, syncSceneImages, type BuildInput, type BuildResult } from "@cvs/engine";
 import { baseCss, fontFaceCss, getTheme, groundHtml, SKETCH_FILTER_SVG } from "@cvs/themes";
 import { compileScene, replaceTimingBlock } from "./compile";
 import { lintErrors, lintScene } from "./lint";
@@ -91,6 +91,7 @@ export async function hfBuild(input: BuildInput): Promise<BuildResult> {
   const warnings: string[] = [];
   const assumptions: Record<string, string[]> = {};
   const files: string[] = [];
+  const images = new Set<string>();
   video.scenes.forEach((scene, i) => {
     const T = timing.scenes[i];
     const file = join(comp, `${scene.id}.html`);
@@ -101,14 +102,18 @@ export async function hfBuild(input: BuildInput): Promise<BuildResult> {
       html = replaceTimingBlock(custom, T);
       assumptions[scene.id] = [...(scene.assumptions ?? []), "Cảnh tùy biến do AI viết mã – cần duyệt hình"];
     } else {
+      spec.html = dropMissingImages(spec.html, (id) => assetExists(input.assetsDir, id));
       html = compileScene(spec, T, { scene, videoKey: video.key });
       assumptions[scene.id] = spec.assumptions;
       for (const e of spec.errors) warnings.push(`${scene.id}: ${e}`);
     }
     for (const issue of lintErrors(lintScene(html, scene.id))) warnings.push(`${scene.id} lint ${issue.rule}: ${issue.message}`);
+    for (const id of sceneImageRefs(html)) images.add(id);
     writeIfChanged(file, html);
     files.push(file);
   });
+  // ảnh của dự án mà cảnh dùng → assets/img (đường dẫn tương đối, như giọng đọc ở assets/vo)
+  for (const id of syncSceneImages(images, input.assetsDir, workDir).missing) warnings.push(`Thiếu ảnh ${id} trong thư mục ảnh của dự án`);
   // xóa cảnh thừa
   for (const f of readdirSync(comp)) if (!video.scenes.some((s) => `${s.id}.html` === f)) rmSync(join(comp, f), { force: true });
 

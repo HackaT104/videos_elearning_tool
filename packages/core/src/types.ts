@@ -1,6 +1,22 @@
 // Mô hình dữ liệu chuẩn (mục 3.5). JSON này là nguồn sự thật cho cả hai bộ dựng.
 
-export type StyleId = "giay-ky-thuat" | "toi-dien-anh" | "phang-tuoi-sang" | "bien-tap-tap-chi" | "bang-trang" | "doanh-nghiep-xanh" | "ban-thiet-ke" | "toi-gian-thuy-si" | "rung-dem" | "pastel-hoc-duong";
+export type StyleId =
+  | "giay-ky-thuat"
+  | "toi-dien-anh"
+  | "phang-tuoi-sang"
+  | "bien-tap-tap-chi"
+  | "bang-trang"
+  | "doanh-nghiep-xanh"
+  | "ban-thiet-ke"
+  | "toi-gian-thuy-si"
+  | "rung-dem"
+  | "pastel-hoc-duong"
+  | "canh-bao-an-toan"
+  | "riso-coban"
+  | "ky-thuat-so-toi"
+  | "am-moc"
+  | "khoi-mau-tap-chi"
+  | "danh-muc-tinh";
 export type EngineId = "hyperframes" | "remotion";
 export type VoiceProvider = "cit" | "edge" | "zerotts";
 export type LevelTier = "co-ban" | "trung-cap" | "chuyen-sau";

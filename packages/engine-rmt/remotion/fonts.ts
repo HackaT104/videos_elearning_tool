@@ -18,7 +18,14 @@ export function loadFontsSync(fonts: RmtFont[]) {
     const key = `${f.family}|${f.weight}|${f.unicodeRange}`;
     if (loaded.has(key)) continue;
     loaded.add(key);
-    const face = new FontFace(f.family, b64ToBuffer(f.base64), { weight: String(f.weight), style: "normal", unicodeRange: f.unicodeRange, display: "block" });
+    const face = new FontFace(f.family, b64ToBuffer(f.base64), {
+      weight: String(f.weight),
+      style: "normal",
+      unicodeRange: f.unicodeRange,
+      display: "block",
+      // cùng ghi đè số đo dọc như @font-face của HyperFrames
+      ...(f.ascentOverride ? { ascentOverride: f.ascentOverride, descentOverride: f.descentOverride } : {}),
+    });
     document.fonts.add(face);
     // dữ liệu nhị phân: phân tích ngay, không cần chờ mạng
     void face.load().catch(() => undefined);

@@ -45,6 +45,12 @@ describe("lint hợp đồng cảnh HyperFrames", () => {
     ["no-play", TL, `tl.play(); ${TL}`],
   ];
   it.each(cases)("%s", (rule, from, to) => expect(rules(mutate(from, to))).toContain(rule));
+  it("ảnh chỉ được trỏ tới assets/img/<mã ảnh dự án>", () => {
+    const img = (src: string) => rules(mutate("</template>", `<img src="${src}" alt=""></template>`));
+    expect(img("assets/img/0123456789abcdef-1600x900.png")).toEqual([]);
+    for (const bad of ["/etc/passwd", "../../x.png", "file:///C:/a.png", "data:image/svg+xml,<svg onload=alert(1)>", "assets/vo/x.mp3", "assets/img/../x.png", "assets/img/a.png"])
+      expect(img(bad), bad).toContain("local-img-only");
+  });
   it("cảnh trong ngoài <template>", () => expect(rules(good + "\n<div>ngoài</div>")).toContain("template-wrap"));
   it("đăng ký timeline trước tween", () => {
     const bad = good.replace('window.__timelines["s1"] = tl;', "").replace("const tl = gsap.timeline({ paused: true });", 'const tl = gsap.timeline({ paused: true });\nwindow.__timelines["s1"] = tl;');

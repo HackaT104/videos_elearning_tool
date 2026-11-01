@@ -3,9 +3,9 @@
 
 import { readFileSync } from "node:fs";
 import { buildVideo, formatClock, type OutlineDoc, type ProjectDefaults, type Scene, type SceneDesign, type SceneTiming, type Video } from "@cvs/core";
-import { DESIGN_TEMPLATE_IDS, ICON_NAMES, TEMPLATES, validateParams } from "@cvs/engine";
+import { DESIGN_TEMPLATE_IDS, ICON_NAMES, sanitizeSvg, TEMPLATES, THEME_COLOR_VARS, validateParams } from "@cvs/engine";
 import { getTheme } from "@cvs/themes";
-import { ask, askJson } from "./client";
+import { AiError, ask, askJson } from "./client";
 
 export * from "./client";
 
@@ -108,8 +108,13 @@ Trả về DUY NHẤT JSON: {"title": string, "scenes": [{"title": string, "visu
 
 // ---------------- Thiết kế cảnh (template + tham số) ----------------
 
-function catalog(): string {
-  return DESIGN_TEMPLATE_IDS.map((id) => {
+/** Template AI được chọn: "image-focus" chỉ khi cảnh đã có ảnh người dùng (AI không tự chọn ảnh). */
+function designIds(scene: Scene): string[] {
+  return DESIGN_TEMPLATE_IDS.filter((id) => id !== "image-focus" || scene.design?.template === "image-focus");
+}
+
+function catalog(ids = DESIGN_TEMPLATE_IDS): string {
+  return ids.map((id) => {
     const t = TEMPLATES[id];
     return `### ${id} – ${t.label}\nDùng khi: ${t.when}\nSchema tham số: ${JSON.stringify(t.schema)}\nVí dụ: ${JSON.stringify(t.example)}`;
   }).join("\n\n");
@@ -134,15 +139,21 @@ ${video.sources ? `NGUỒN: ${video.sources}` : ""}`;
 
 export type DesignResult = { design: SceneDesign; assumptions: string[]; reasoning?: string };
 
+/** Thiết kế hiện tại cho prompt: không gửi lại SVG minh hoạ (dài) – giữ "brief" là giữ hình. */
+const designForPrompt = (d: SceneDesign) =>
+  JSON.stringify(d, (k, v) => (k === "svg" && typeof v === "string" ? "(đã vẽ – giữ nguyên brief để giữ hình, đổi brief để vẽ lại)" : k === "svgKey" ? undefined : v));
+
 export async function designScene(video: Video, scene: Scene, T?: SceneTiming, note?: string): Promise<DesignResult> {
   const n = scene.sentences.length;
+  const ids = designIds(scene);
+  const curImage = scene.design?.template === "image-focus" ? scene.design.params.image : undefined;
   const r = await askJson<{ template: string; params: Record<string, unknown>; assumptions: string[]; reasoning?: string }>(
     {
-      system: `Bạn là đạo diễn hình chuyển động cho video e-learning. Bạn chọn MỘT template cảnh có tham số và điền tham số để hình khớp từng câu thoại. ${RULES}\n\n${MOTION_CHECKLIST}\n\nBiểu tượng có sẵn: ${ICON_NAMES.join(", ")}.\n\nTHƯ VIỆN TEMPLATE:\n${catalog()}`,
+      system: `Bạn là đạo diễn hình chuyển động cho video e-learning. Bạn chọn MỘT template cảnh có tham số và điền tham số để hình khớp từng câu thoại. ${RULES}\n\n${MOTION_CHECKLIST}\n\nBiểu tượng có sẵn: ${ICON_NAMES.join(", ")}.\n\nTHƯ VIỆN TEMPLATE:\n${catalog(ids)}`,
       content: `${seriesSpec(video)}
 
 ${sceneBrief(video, scene, T)}
-${scene.design ? `\nTHIẾT KẾ HIỆN TẠI: ${JSON.stringify(scene.design)}` : ""}
+${scene.design ? `\nTHIẾT KẾ HIỆN TẠI: ${designForPrompt(scene.design)}` : ""}
 ${note ? `\nGHI CHÚ SỬA CỦA NGƯỜI DUYỆT (bắt buộc làm theo): ${note}` : ""}
 
 Yêu cầu:
@@ -155,14 +166,65 @@ Trả về DUY NHẤT JSON: {"template": string, "params": object, "assumptions"
       effort: "medium",
     },
     (v) => {
-      if (!DESIGN_TEMPLATE_IDS.includes(v.template)) return [`template "${v.template}" không có trong thư viện`];
+      if (!ids.includes(v.template)) return [`template "${v.template}" không có trong thư viện`];
       const errs = validateParams(v.template, v.params ?? {});
+      if (v.template === "illustration" && !(typeof v.params?.brief === "string" && v.params.brief.trim())) errs.push('illustration cần "brief" (mô tả hình bằng lời)');
+      if (v.template === "image-focus" && v.params?.image !== curImage) errs.push(`image-focus phải giữ nguyên "image": ${JSON.stringify(curImage)}`);
       const cues = JSON.stringify(v.params).match(/"cue":\s*(\d+)/g) ?? [];
       for (const c of cues) if (Number(c.split(":")[1]) >= n) errs.push(`cue ${c} vượt quá số câu (${n})`);
       return errs;
     },
   );
+  // SVG minh hoạ chỉ do drawIllustration vẽ (bước dựng cảnh, theo brief) – không nhận SVG AI tự viết ở đây
+  if (r.template === "illustration") {
+    delete r.params.svg;
+    delete r.params.svgKey;
+  }
   return { design: { template: r.template, params: r.params, by: "ai" }, assumptions: r.assumptions ?? [], reasoning: r.reasoning };
+}
+
+// ---------------- Hình minh hoạ (SVG) ----------------
+
+export type IllustrationStyle = {
+  /** Độ dày nét viền (đơn vị viewBox 800×600). */
+  strokeWidth: number;
+  /** Theme nền tối: --ink sáng, --card/--bg2 tối. */
+  dark: boolean;
+};
+
+const ILLUSTRATION_RULES = (o: IllustrationStyle) => `Vẽ MỘT hình minh hoạ vector phẳng (flat) cho video e-learning, dạng SVG:
+- <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"> – không width/height; không nền phủ kín cả khung (nền video có sẵn).
+- Chỉ dùng thẻ: g, path, circle, ellipse, rect, line, polyline, polygon. Tối đa ~150 phần tử. KHÔNG chữ (không <text>), không <image>, <use>, <defs>, gradient, filter, <style>, script, href, sự kiện on*.
+- Màu CHỈ qua thuộc tính fill/stroke = biến theme hoặc "none": ${THEME_COLOR_VARS.map((c) => `var(--${c})`).join(", ")}.
+  Vai trò: --accent = chủ thể/tiêu điểm (1–2 chỗ); --alt = đối tượng phụ; --money = tiền/giá trị; --warn = CHỈ rủi ro/nguy hiểm; --ink = nét viền chính; --ink-soft = chi tiết phụ, bóng; --card = mảng sáng lớn (${o.dark ? "trên nền tối --card là mảng tối hơi sáng hơn nền" : "thường trắng/sáng"}); --bg2 = mảng nền/sàn; --line = đường mảnh trang trí.${o.dark ? " Theme nền TỐI: --ink là màu sáng." : ""}
+- Nét: stroke-width="${o.strokeWidth}", stroke-linecap="round", stroke-linejoin="round". Hình khối đơn giản, rõ ở cỡ nhỏ, không chi tiết li ti, không ảnh thật, không logo/thương hiệu thật.
+- Nhóm theo thứ tự xuất hiện: các <g id="part-1">, <g id="part-2">, … (3–7 nhóm, nhóm đầu là bối cảnh/nền, nhóm sau là chủ thể và chi tiết nhấn), nằm thẳng trong <svg>. Hình sẽ hiện dần từng nhóm.
+- Nét viền ngoài chính của các hình nên là <path … class="draw" pathLength="1" fill="none" stroke="var(--ink)"> để vẽ ra dần (mảng màu tô dùng phần tử riêng không có class).
+- Có thể dùng transform="translate(…)"/"scale(…)" trên <g>.`;
+
+/** Claude vẽ một hình minh hoạ SVG theo mô tả; kết quả đã lọc an toàn (mode illustration). */
+export async function drawIllustration(brief: string, o: IllustrationStyle): Promise<{ svg: string; warnings: string[] }> {
+  if (!brief.trim()) throw new AiError("Thiếu mô tả hình minh hoạ");
+  let feedback = "";
+  for (let round = 0; round < 3; round++) {
+    const text = await ask({
+      system: `Bạn là họa sĩ minh hoạ vector cho video e-learning an toàn – chất lượng – môi trường (TUV NORD). ${ILLUSTRATION_RULES(o)}`,
+      content: `MÔ TẢ HÌNH (tiếng Việt):\n"""${brief.slice(0, 1500)}"""\n${feedback ? `\nLẦN TRƯỚC CHƯA ĐẠT (phải sửa):\n${feedback}\n` : ""}\nTrả về DUY NHẤT một khối \`\`\`svg … \`\`\` chứa toàn bộ SVG.`,
+      effort: "medium",
+      maxTokens: 24000,
+    });
+    const raw = text.match(/```(?:svg|xml|html)?\s*(<svg[\s\S]*?<\/svg>)\s*```/)?.[1] ?? text.match(/<svg[\s\S]*<\/svg>/)?.[0];
+    if (!raw) {
+      feedback = "Không tìm thấy <svg>…</svg>.";
+      continue;
+    }
+    const r = sanitizeSvg(raw, "illustration");
+    const parts = r.svg?.match(/<g id="part-\d+"/g)?.length ?? 0;
+    const errs = [r.error, r.svg && (r.elements ?? 0) < 6 ? "Hình quá sơ sài (< 6 phần tử)" : "", r.svg && parts < 2 ? 'Cần ≥ 2 nhóm <g id="part-N">' : ""].filter(Boolean);
+    if (r.svg && errs.length === 0) return { svg: r.svg, warnings: r.warnings };
+    feedback = [...errs, ...r.warnings.slice(0, 5)].join("\n");
+  }
+  throw new AiError(`Claude chưa vẽ được hình minh hoạ hợp lệ: ${feedback}`);
 }
 
 // ---------------- Cảnh tùy biến ----------------

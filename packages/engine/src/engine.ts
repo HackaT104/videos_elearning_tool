@@ -10,6 +10,8 @@ export type BuildInput = {
   voDir: string;
   /** Thư mục làm việc của bộ dựng cho video này. */
   workDir: string;
+  /** Thư mục ảnh của dự án (mã ảnh = tên file); bộ dựng chép ảnh cảnh dùng vào workDir/assets/img. */
+  assetsDir?: string;
 };
 
 export type BuildResult = { workDir: string; files: string[]; warnings: string[]; assumptions: Record<string, string[]> };

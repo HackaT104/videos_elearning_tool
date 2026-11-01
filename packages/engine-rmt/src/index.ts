@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeJsonAtomic, type Timing, type Video } from "@cvs/core";
-import { buildSceneSpec, scriptMarkdown, type BuildInput, type BuildResult, type LayoutIssue, type PreviewResult, type RenderEngine, type RenderProgress, type RenderResult } from "@cvs/engine";
+import { assetExists, buildSceneSpec, dropMissingImages, IMG_DIR, sceneImageRefs, scriptMarkdown, syncSceneImages, type BuildInput, type BuildResult, type LayoutIssue, type PreviewResult, type RenderEngine, type RenderProgress, type RenderResult } from "@cvs/engine";
 import { baseCss, fontFaces, getTheme, groundHtml, SKETCH_FILTER_SVG } from "@cvs/themes";
 import { probe } from "@cvs/tts";
 import type { RmtProps } from "../remotion/types";
@@ -15,9 +15,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const REMOTION_DIR = join(HERE, "..", "remotion");
 const BUNDLE_ROOT = join(HERE, "..", ".bundle");
 
-export async function buildProps(video: Video, timing: Timing): Promise<RmtProps> {
+/** assetsDir: thư mục ảnh của dự án – <img> trỏ tới ảnh không có bị bỏ (Img của Remotion sẽ treo chờ ảnh lỗi). */
+export async function buildProps(video: Video, timing: Timing, assetsDir?: string): Promise<RmtProps> {
   const theme = getTheme(video.style, video.font);
-  const fonts = (await fontFaces(theme)).map((f) => ({ family: f.family, weight: f.weight, unicodeRange: f.unicodeRange, base64: f.base64 }));
+  const fonts = (await fontFaces(theme)).map((f) => ({ family: f.family, weight: f.weight, unicodeRange: f.unicodeRange, base64: f.base64, ascentOverride: f.ascentOverride, descentOverride: f.descentOverride }));
   return {
     videoKey: video.key,
     fps: timing.fps,
@@ -38,7 +39,7 @@ export async function buildProps(video: Video, timing: Timing): Promise<RmtProps
         dur: T.dur,
         T: { dur: T.dur, cues: T.cues, ends: T.ends },
         audio: T.audioFile ? { src: `assets/vo/${T.audioFile}`, from: T.lead, dur: T.audioDur } : undefined,
-        spec: { html: spec.html, css: spec.css, anims: spec.anims, counts: spec.counts, template: custom ? "custom" : spec.template },
+        spec: { html: dropMissingImages(spec.html, (id) => assetExists(assetsDir, id)), css: spec.css, anims: spec.anims, counts: spec.counts, template: custom ? "custom" : spec.template },
         custom,
       };
     }),
@@ -126,8 +127,11 @@ function copyVoice(input: BuildInput) {
 export async function rmtBuild(input: BuildInput): Promise<BuildResult> {
   mkdirSync(input.workDir, { recursive: true });
   copyVoice(input);
-  const props = await buildProps(input.video, input.timing);
+  const props = await buildProps(input.video, input.timing, input.assetsDir);
   const warnings: string[] = [];
+  // ảnh của dự án → assets/img (như giọng ở assets/vo); khi render, withBase đổi thành URL máy chủ tĩnh
+  const refs = props.scenes.flatMap((s) => sceneImageRefs(s.spec.html));
+  for (const id of syncSceneImages(refs, input.assetsDir, input.workDir).missing) warnings.push(`Thiếu ảnh ${id} trong thư mục ảnh của dự án`);
   const assumptions: Record<string, string[]> = {};
   input.video.scenes.forEach((s, i) => {
     const spec = buildSceneSpec(input.video, s, { isLast: i === input.video.scenes.length - 1 });
@@ -144,7 +148,14 @@ export async function rmtBuild(input: BuildInput): Promise<BuildResult> {
 }
 
 function withBase(props: RmtProps, base: string): RmtProps {
-  return { ...props, scenes: props.scenes.map((s) => (s.audio ? { ...s, audio: { ...s.audio, src: `${base}/${s.audio.src}` } } : s)) };
+  return {
+    ...props,
+    scenes: props.scenes.map((s) => ({
+      ...s,
+      audio: s.audio ? { ...s.audio, src: `${base}/${s.audio.src}` } : undefined,
+      spec: { ...s.spec, html: s.spec.html.replaceAll(` src="${IMG_DIR}`, ` src="${base}/${IMG_DIR}`) },
+    })),
+  };
 }
 
 function browserExecutable(): string | undefined {

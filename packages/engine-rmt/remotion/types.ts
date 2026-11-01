@@ -1,6 +1,6 @@
 import type { Anim, CountAnim, SceneTimingLike } from "@cvs/engine/browser";
 
-export type RmtFont = { family: string; weight: number; unicodeRange: string; base64: string };
+export type RmtFont = { family: string; weight: number; unicodeRange: string; base64: string; ascentOverride?: string; descentOverride?: string };
 
 export type RmtScene = {
   id: string;

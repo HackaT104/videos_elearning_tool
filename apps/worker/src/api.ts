@@ -14,6 +14,7 @@ import {
   listProjects, listVideos, paths, setVideoFlags, STORAGE, updateJob, updateProject, upsertVideo, activeJobFor, cacheVoices, listVoices, type JobKind,
 } from "@cvs/db";
 import {
+  AssetError, assetFile, deleteAsset, listAssets, MAX_ASSET_BYTES, saveAsset,
   archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
 } from "@cvs/studio";
 import {
@@ -172,11 +173,55 @@ app.post("/projects/:id/upload", async (c) => {
       out.push({ name: f.name, error: (e as Error).message });
     }
   }
-  // Tự dựng sẵn 10 mẫu phong cách từ chính video vừa tải lên để người dùng chọn trước khi sản xuất.
+  // Tự dựng sẵn mẫu cho mọi phong cách từ chính video vừa tải lên để người dùng chọn trước khi sản xuất.
   const p = getProject(id);
   if (firstKey && p && !p.settings.styleConfirmed) enqueueJob(id, "theme-preview", firstKey, {});
   return c.json(out);
 });
+// ---------- ảnh của dự án (dùng trong cảnh image-focus) ----------
+const IMG_MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml" };
+app.get("/projects/:id/assets", (c) => {
+  const id = c.req.param("id");
+  if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  return c.json(listAssets(id));
+});
+app.post("/projects/:id/assets", async (c) => {
+  const id = c.req.param("id");
+  if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  // chặn sớm theo Content-Length (multipart thêm ít byte ranh giới)
+  if (Number(c.req.header("content-length") ?? 0) > MAX_ASSET_BYTES + 64 * 1024) return c.json({ error: "Ảnh quá lớn (tối đa 10 MB)" }, 413);
+  const form = await c.req.formData().catch(() => null);
+  const f = form?.get("file");
+  if (!f || typeof f === "string") return c.json({ error: "Thiếu file ảnh (trường \"file\")" }, 400);
+  if (f.size > MAX_ASSET_BYTES) return c.json({ error: "Ảnh quá lớn (tối đa 10 MB)" }, 413);
+  try {
+    return c.json(saveAsset(id, f.name, Buffer.from(await f.arrayBuffer())));
+  } catch (e) {
+    if (e instanceof AssetError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+app.get("/projects/:id/assets/:aid", (c) => {
+  const file = getProject(c.req.param("id")) ? assetFile(c.req.param("id"), c.req.param("aid")) : null;
+  if (!file) return c.json({ error: "Không có ảnh" }, 404);
+  return c.body(readFileSync(file), 200, {
+    "Content-Type": IMG_MIME[extname(file).slice(1)] ?? "application/octet-stream",
+    "X-Content-Type-Options": "nosniff",
+    // SVG mở trực tiếp: không chạy script, không tải ngoài (đã lọc – thêm một lớp chặn)
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "Cache-Control": "private, max-age=31536000, immutable",
+  });
+});
+app.delete("/projects/:id/assets/:aid", (c) => {
+  const id = c.req.param("id");
+  const aid = c.req.param("aid");
+  if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  // cảnh đang dùng ảnh này sẽ hiện khung giữ chỗ – báo lại cho giao diện
+  const usedBy = listVideos(id).flatMap((v) => v.data.scenes.filter((s) => s.design?.params?.image === aid).map((s) => `${v.key} ${s.id}`));
+  if (!deleteAsset(id, aid)) return c.json({ error: "Không có ảnh" }, 404);
+  return c.json({ ok: true, usedBy });
+});
+
 app.get("/projects/:id/styles", (c) => {
   const id = c.req.param("id");
   const job = listJobs(id, 50).find((j) => j.kind === "theme-preview" && ["queued", "running"].includes(j.status)) ?? null;

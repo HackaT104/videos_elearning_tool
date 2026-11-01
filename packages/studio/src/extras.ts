@@ -127,7 +127,7 @@ export async function voiceSamples(text: string, voices: VoiceConfig[]): Promise
   return out;
 }
 
-// ---------- So sánh phong cách: cùng một khung mẫu theo cả 5 kiểu ----------
+// ---------- So sánh phong cách: cùng một khung mẫu theo mọi phong cách (THEME_IDS) ----------
 
 export async function stylePreview(projectId: string, key: string | null, sceneId?: string): Promise<{ style: StyleId; file: string }[]> {
   let video: Video;
@@ -176,7 +176,7 @@ export async function stylePreview(projectId: string, key: string | null, sceneI
       const v = { ...video, style, key: `${video.key}-${style}` };
       const timing = currentTiming(projectId, v);
       const work = join(dir, style);
-      await hfBuild({ video: v, timing, manifest: null, voDir: join(work, "vo"), workDir: work });
+      await hfBuild({ video: v, timing, manifest: null, voDir: join(work, "vo"), workDir: work, assetsDir: paths.assets(projectId) });
       const t = qaTimes(timing).find((x) => x.label.endsWith("cuối cảnh"))!;
       const p = await hfPreview(work, [t], join(dir, "frames", style), { browser });
       const file = join(dir, `${style}.png`);

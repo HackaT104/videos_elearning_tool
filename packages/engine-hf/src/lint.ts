@@ -100,6 +100,10 @@ export function lintScene(src: string, sceneId: string): LintIssue[] {
     if (lastTween > reg) err("register-timeline", "Đăng ký timeline phải ở sau mọi tween");
   }
   for (const [re, rule, msg] of FORBIDDEN) for (const m of src.matchAll(re)) err(rule, msg, m.index);
+  // tài nguyên chỉ được là ảnh của dự án, đường dẫn tương đối assets/img/<mã> (không tuyệt đối, không ../, không data:/file:)
+  for (const m of src.matchAll(/(?<![\w-])src\s*=\s*(["']?)([^"'\s>]*)\1/gi))
+    if (!/^assets\/img\/[a-f0-9]{16}-\d{1,5}x\d{1,5}\.(?:png|jpg|webp|svg)$/.test(m[2]) && !/^https?:\/\//i.test(m[2]))
+      err("local-img-only", `src="${m[2].slice(0, 60)}" – chỉ dùng ảnh của dự án: src="assets/img/<mã ảnh>"`, m.index);
 
   // vị trí tween: phải đi qua at() hoặc T.dur; giây cứng chỉ cho phép < 1 s (tiêu đề)
   const tweened = new Set<string>();

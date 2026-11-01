@@ -1,4 +1,4 @@
-// Bộ sưu tập template: mỗi template một cảnh (tham số mẫu) × 5 theme → ảnh khung cuối cảnh + ảnh ghép.
+// Bộ sưu tập template: mỗi template một cảnh (tham số mẫu) × mọi theme → ảnh khung cuối cảnh + ảnh ghép.
 // Dùng cho màn hình "Chọn phong cách" và để soát hình template.
 //   pnpm tsx scripts/gallery.ts [thư mục ra] [template1,template2]
 import { mkdirSync } from "node:fs";
@@ -35,6 +35,8 @@ const SAMPLE_VO: Record<string, string> = {
   "trend-line": "Phát thải của doanh nghiệp tăng đều từ năm 2019. Năm 2022 đạt đỉnh. Sau khi áp dụng ISO 14001, phát thải giảm rõ rệt.",
   "rank-reorder": "Năm 2023, điện năng là nguồn phát thải lớn nhất. Sang năm 2024, thứ hạng đã thay đổi. Vận chuyển vươn lên dẫn đầu sau khi nhà máy lắp điện mặt trời.",
   "ui-walkthrough": "Mở phần mềm quản lý tài liệu. Chọn mục Hồ sơ đánh giá ở menu bên trái. Nhập tên cơ sở cần đánh giá. Bấm nút Lưu để hoàn tất.",
+  illustration: "Trước khi vào xưởng, hãy trang bị đầy đủ đồ bảo hộ. Mũ bảo hộ phải cài quai. Kính giúp chống bắn tóe. Găng tay chống cắt bảo vệ đôi tay.",
+  "image-focus": "Đây là màn hình khai báo sự cố. Trước hết, chọn mục Báo cáo sự cố. Sau đó mô tả ngắn gọn điều đã xảy ra. Cuối cùng bấm Gửi báo cáo.",
 };
 
 export function galleryVideo(style: StyleId, templates = Object.keys(TEMPLATES), level = "L1"): Video {

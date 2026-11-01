@@ -15,6 +15,8 @@ export const STORAGE = resolve(process.env.CVS_STORAGE || join(REPO_ROOT, "stora
 export const paths = {
   project: (pid: string) => join(STORAGE, "projects", pid),
   source: (pid: string) => join(STORAGE, "projects", pid, "source"),
+  /** Ảnh người dùng tải lên (tên file = mã ảnh, kèm <mã>.json: tên gốc, ngày tải). */
+  assets: (pid: string) => join(STORAGE, "projects", pid, "assets"),
   data: (pid: string, key?: string) => join(STORAGE, "projects", pid, "data", key ? `${key}.json` : ""),
   vo: (pid: string, key: string) => join(STORAGE, "projects", pid, "vo", key),
   frames: (pid: string, key: string) => join(STORAGE, "projects", pid, "frames", key),
@@ -35,7 +37,7 @@ export type ProjectSettings = {
   /** Soát bằng hình (vision) trong QA. */
   aiVision: boolean;
   hfRenderer: "auto" | "cli" | "fallback";
-  /** Người dùng đã chọn phong cách từ 10 mẫu (bắt buộc trước khi render). */
+  /** Người dùng đã chọn phong cách từ các mẫu (bắt buộc trước khi render). */
   styleConfirmed?: boolean;
   /** Cặp phông chữ cho video (FONT_PAIRS); trống = theo phong cách. */
   font?: string;

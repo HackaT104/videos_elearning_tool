@@ -3,3 +3,4 @@ export * from "./pipeline";
 export * from "./extras";
 export * from "./claude-auth";
 export * from "./agent";
+export * from "./assets";

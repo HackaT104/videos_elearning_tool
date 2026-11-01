@@ -21,7 +21,7 @@ Không có prop nào khác: màu, width/height, top/left, clip-path tự do **kh
 
 Helper sẵn có (`packages/engine/src/motion.ts`): `enter` (mờ + trượt + blur 6), `fade`, `dim`/`undim`, `pop` (back.out(1.6)),
 `draw`, `grow`, `move`, `wipeIn(dir)`, `springIn` (elastic.out(1, 0.5)), `count`, `shift(ref, d)`.
-Một agent khác đang thêm **kineticText** (chữ vào theo từ/grapheme, xem mục Chữ chuyển động) – dùng khi đã có.
+Chữ chuyển động: `kineticText` (`packages/engine/src/kinetic.ts`, xem mục Preset chữ chuyển động).
 
 ## Từ vựng ease (khớp `packages/engine/src/ease.ts`)
 
@@ -77,6 +77,20 @@ Các cách vào chữ – **đổi giữa các cảnh**, đừng lặp một ki�
 - cả dòng blur-in 8 px → 0 trong 0,15–0,2 s;
 - lộ theo hàng bằng `wipe`/`wipeUp` (mặt nạ chừa ≥ 0,3 em trên/dưới cho dấu);
 - một từ khóa được tô (marker `wipe` sau chữ, hoặc đổi sang màu nhấn) đúng lúc giọng nói tới.
+
+### Preset chữ chuyển động (`KINETIC_PRESETS`, tham số `preset` của kinetic-statement)
+
+Tách lúc build, chỉ dùng AnimProps (HyperFrames = Remotion). Đổi preset giữa các cảnh; nghiêm túc → word-fade/focus-pull/wipe-reveal.
+- Theo từ: `word-rise`, `word-fade`, `mask-rise`, `scale-pop`; nhấn **…**: `highlight-sweep`, `underline-draw`, `circle-annotate`
+  (`<ellipse>` theo % hộp cụm, nét px thật, vòng thứ hai vượt điểm đầu).
+- Theo grapheme (chỉ tiêu đề ≤ 30 ký tự, dài hơn tự về theo từ/cả khối): `char-soft-rise` (blur 8 + y 16 → 0, expo.out, 0,03 s),
+  `tracking-in` (x lệch theo vị trí → 0, không tween letter-spacing); `typewriter` (≈ 20 ký tự/s, con trỏ nháy 2 lần rồi tắt).
+- Cả khối: `focus-pull` (blur 14 + scale 1,03 → 1), `block-reveal` (thanh accent nở trái → chữ hiện → thanh co về phải),
+  `wipe-reveal` (`wipe` + clip chừa đệm dấu).
+- `word-swap` (cụm **…** thay cho các từ `alt`), `odometer` (mỗi chữ số cuộn 0 → d, phải → trái), `reading-focus`
+  (câu/dòng chưa đọc 0,35, đang đọc 1, đã đọc 0,55).
+Đệm mặt nạ theo phông: `kineticPad(theme)` = max(0,35 em, `viPadEm` + 0,15) – `viPadEm` khai báo trong `fontpairs.ts`
+(League Spartan 0,30, Unbounded 0,25, Bitter 0,21, Mali 0,20, Anton 0,19, Archivo 0,15; mặc định 0,12).
 
 **Tiếng Việt**: không tách chữ thành ký tự bằng `split("")`. Tách theo từ (khoảng trắng) hoặc theo grapheme
 `new Intl.Segmenter("vi", { granularity: "grapheme" })` trên chuỗi đã `normalize("NFC")`. Dấu chồng (ặ, ổ, ữ) cao hơn chữ Latin:

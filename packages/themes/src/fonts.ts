@@ -16,7 +16,29 @@ export const REQUIRED_VI = "ệữởẳỹđƯơẫÀÁÂÃÈÉÊÌÍÒÓÔÕÙ
 export const REQUIRED_SYMBOLS = "₂₃₄→←↑↓✓✗≈≤≥×−•";
 const SYMBOL_RANGES = "U+00D7,U+2022,U+2070-209F,U+2190-21FF,U+2212,U+2248,U+2260-2265,U+2713-2717,U+25B2-25BC,U+25CF";
 
-export type FontFaceData = { family: string; weight: number; style: "normal"; unicodeRange: string; format: "woff2" | "woff"; base64: string; file?: string };
+export type FontFaceData = {
+  family: string;
+  weight: number;
+  style: "normal";
+  unicodeRange: string;
+  format: "woff2" | "woff";
+  base64: string;
+  file?: string;
+  /** ascent-override / descent-override (CSS @font-face và FontFace descriptors) – xem METRIC_OVERRIDES. */
+  ascentOverride?: string;
+  descentOverride?: string;
+};
+
+/**
+ * Ghi đè số đo dọc cho phông có hộp chữ cao bất thường (Oswald: 1,193 + 0,289 = 1,48 em) để hộp đo bố cục (QA: range rect)
+ * sát cỡ chữ như các phông khác (1,24 em). Giữ nguyên (ascent − descent) → đường cơ sở trong dòng không đổi, nét chữ không dịch.
+ * Hai bộ dựng nhận cùng giá trị (fontFaceCss / FontFace descriptors).
+ */
+const METRIC_OVERRIDES: Partial<Record<string, { ascent: string; descent: string }>> = { oswald: { ascent: "107.2%", descent: "16.8%" } };
+const overrideCss = (pkg: string) => {
+  const m = METRIC_OVERRIDES[pkg];
+  return m ? `ascent-override:${m.ascent};descent-override:${m.descent};` : "";
+};
 
 function pkgDir(pkg: string): string {
   return dirname(require.resolve(`@fontsource/${pkg}/package.json`));
@@ -84,7 +106,17 @@ export async function fontFaces(theme: Theme): Promise<FontFaceData[]> {
   const faces: FontFaceData[] = [];
   for (const f of themeFontRefs(theme)) {
     for (const { file, range } of faceFiles(f)) {
-      faces.push({ family: f.family, weight: f.weight, style: "normal", unicodeRange: range, format: "woff2", base64: readFileSync(file).toString("base64"), file });
+      const m = METRIC_OVERRIDES[f.pkg];
+      faces.push({
+        family: f.family,
+        weight: f.weight,
+        style: "normal",
+        unicodeRange: range,
+        format: "woff2",
+        base64: readFileSync(file).toString("base64"),
+        file,
+        ...(m ? { ascentOverride: m.ascent, descentOverride: m.descent } : {}),
+      });
     }
   }
   faces.push({ family: SYMBOL_FAMILY, weight: 400, style: "normal", unicodeRange: SYMBOL_RANGES, format: "woff2", base64: (await symbolFont(false)).toString("base64") });
@@ -97,7 +129,7 @@ export async function fontFaceCss(theme: Theme): Promise<string> {
   return (await fontFaces(theme))
     .map(
       (f) =>
-        `@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};font-display:block;src:url(data:font/${f.format};base64,${f.base64}) format('${f.format}');unicode-range:${f.unicodeRange};}`,
+        `@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};font-display:block;src:url(data:font/${f.format};base64,${f.base64}) format('${f.format}');unicode-range:${f.unicodeRange};${f.ascentOverride ? `ascent-override:${f.ascentOverride};descent-override:${f.descentOverride};` : ""}}`,
     )
     .join("\n");
 }
@@ -111,7 +143,7 @@ export function fontFaceUrlCss(refs: FontRef[], url: (pkg: string, file: string)
     if (seen.has(k)) continue;
     seen.add(k);
     for (const { file, range } of faceFiles(f)) {
-      out.push(`@font-face{font-family:'${f.family}';font-style:normal;font-weight:${f.weight};font-display:swap;src:url(${url(f.pkg, file.split(/[\\/]/).pop()!)}) format('woff2');unicode-range:${range};}`);
+      out.push(`@font-face{font-family:'${f.family}';font-style:normal;font-weight:${f.weight};font-display:swap;src:url(${url(f.pkg, file.split(/[\\/]/).pop()!)}) format('woff2');unicode-range:${range};${overrideCss(f.pkg)}}`);
     }
   }
   return out.join("\n");

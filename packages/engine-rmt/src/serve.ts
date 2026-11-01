@@ -1,7 +1,9 @@
-// Máy chủ tĩnh tối giản để Remotion tải giọng đọc (giống engine-hf/server, tránh phụ thuộc chéo).
+// Máy chủ tĩnh tối giản để Remotion tải giọng đọc và ảnh của dự án (giống engine-hf/server, tránh phụ thuộc chéo).
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, normalize, resolve, sep } from "node:path";
+
+const TYPES: Record<string, string> = { ".mp3": "audio/mpeg", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml" };
 
 export function serveStatic(root: string): Promise<{ url: string; close(): Promise<void> }> {
   const base = resolve(root);
@@ -10,7 +12,7 @@ export function serveStatic(root: string): Promise<{ url: string; close(): Promi
     if (!p.startsWith(base + sep) || !existsSync(p) || statSync(p).isDirectory()) return void res.writeHead(404).end();
     const size = statSync(p).size;
     const range = req.headers.range?.match(/bytes=(\d*)-(\d*)/);
-    const type = p.endsWith(".mp3") ? "audio/mpeg" : "application/octet-stream";
+    const type = TYPES[p.slice(p.lastIndexOf(".")).toLowerCase()] ?? "application/octet-stream";
     if (range) {
       const s = range[1] ? Number(range[1]) : 0;
       const e = range[2] ? Number(range[2]) : size - 1;

@@ -10,3 +10,5 @@ export * from "./design";
 export * from "./engine";
 export * from "./script-md";
 export * from "./layout-probe";
+export * from "./svg-sanitize";
+export * from "./assets";

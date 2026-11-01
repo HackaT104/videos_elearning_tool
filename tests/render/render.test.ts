@@ -1,5 +1,5 @@
-// Render một video mẫu ~20 giây ở cả 5 theme, bằng cả HyperFrames và Remotion; so sánh thời lượng và tiếng.
-// Chạy: pnpm test:render   (lâu: ~10 phút; cần Chromium + ffmpeg)
+// Render một video mẫu ~20 giây ở mọi theme (THEME_IDS), bằng cả HyperFrames và Remotion; so sánh thời lượng và tiếng.
+// Chạy: pnpm test:render   (lâu: ~1–2 phút mỗi theme; cần Chromium + ffmpeg)
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -27,7 +27,7 @@ function envCorr(a: Float32Array, b: Float32Array, sr: number) {
   return best;
 }
 
-describe.runIf(run)("render 20 s × 5 theme × 2 bộ dựng", async () => {
+describe.runIf(run)("render 20 s × mọi theme × 2 bộ dựng", async () => {
   const base = await loadFixtureVideo(1);
   const voDir = join(OUT, "vo");
   mkdirSync(voDir, { recursive: true });

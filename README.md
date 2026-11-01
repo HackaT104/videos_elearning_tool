@@ -68,7 +68,7 @@ Không có Windows? Trên macOS/Linux: `pnpm install && pnpm run cai-dat && pnpm
 3. **Kịch bản** – sửa theo cảnh: mô tả hình, chữ trên màn hình, mỗi câu một dòng với cột **lời thoại** và cột **cách đọc**; mục "AI tự quyết" hiện màu vàng; chọn template + tham số cảnh (tùy chọn).
 4. **Soát cách đọc** – bảng trước → sau của mọi câu bị đổi, cảnh báo còn chữ số/cụm viết hoa, sửa nhanh (khóa câu sửa tay), **nghe thử từng câu**, bảng thuật ngữ của dự án và dùng chung.
 5. **Giọng & nhịp** – đèn trạng thái CIT, cấu hình theo cấp độ (xen kẽ nữ/nam, một giọng), tốc độ, nhịp lead/gap/tail từng video, **Nghe thử** nhiều giọng × tốc độ.
-6. **Phong cách & bộ dựng** – dựng **cùng một khung mẫu theo cả 5 kiểu** để so sánh; chọn theme và bộ dựng cho dự án hoặc từng video; **"Dựng lại bằng bộ kia"** (giữ giọng và timing).
+6. **Phong cách & bộ dựng** – dựng **cùng một khung mẫu theo mọi phong cách** để so sánh; chọn theme và bộ dựng cho dự án hoặc từng video; **"Dựng lại bằng bộ kia"** (giữ giọng và timing).
 7. **Sản xuất** – hàng đợi job, mỗi video có tiến độ riêng: Giọng → Cắt/giãn → Timing → Dựng cảnh → QA → Render; nút **Tạm dừng / Tiếp tục / Thử lại bước lỗi / Chỉ dựng lại hình (giữ giọng) / Chỉ làm lại giọng / Thiết kế lại (AI)**; nhật ký từng job.
 8. **Xem & duyệt** – trình phát có phụ đề, ảnh ghép khung cuối cảnh, báo cáo QA, danh sách "AI tự quyết"; **Duyệt** hoặc **Ghi chú sửa** (ngôn ngữ tự nhiên, AI sửa đúng cảnh đó); nút "AI viết cảnh tùy biến".
 9. **Xuất** – `storage/projects/<id>/out/Cap_do_1/<mã>.mp4` …, kèm `DANH_MUC_VIDEO.txt` (UTF-8 BOM, CRLF: mã, thời lượng, tiêu đề, giọng, phong cách); chỉ video **đã duyệt** (QA chặn xuất nếu không đạt, trừ khi chủ động bỏ qua); nút **Mở thư mục**.
@@ -83,7 +83,7 @@ apps/web            Next.js 15 + React 19 + Tailwind 4 – giao diện thuần; 
 apps/worker         Node 22 + TypeScript (tsx) – API HTTP (Hono) + hàng đợi job trên SQLite
 packages/core       Kiểu dữ liệu, bóc docx (mammoth) / xlsx (exceljs), tách câu, chuẩn hóa cách đọc, mã video, timing
 packages/tts        Client CIT Voice Studio, Edge TTS dự phòng, gán mốc câu từ cues, cắt im lặng, giãn nhịp, manifest
-packages/themes     5 theme (token → CSS variables), phông tiếng Việt thu gọn nhúng base64, kiểm tra cmap
+packages/themes     các theme (`THEMES` – token → CSS variables), phông tiếng Việt thu gọn nhúng base64, kiểm tra cmap
 packages/engine     Giao diện RenderEngine, SceneSpec, 13 template cảnh có tham số, ease (giống GSAP), biểu tượng, đo bố cục
 packages/engine-hf  HyperFrames: sinh index.html + compositions/sN.html, lint hợp đồng cảnh, preview (Playwright), render CLI + dự phòng
 packages/engine-rmt Remotion: composition, phát SceneSpec bằng interpolate, cảnh TSX tùy biến, renderMedia/renderStill
@@ -109,7 +109,7 @@ Vì vậy cùng tham số cho cùng hình ở cả hai bộ dựng (đo được
 
 **Template:** `title-card`, `split-compare`, `stat-hero`, `icon-grid`, `flow-chain`, `bar-compare`, `process-steps`, `timeline-run`, `document-transform`, `cause-effect`, `checklist`, `quote-banner`, và `draft` (cảnh nháp "BẢN NHÁP" hiện lời thoại theo mốc để duyệt nhịp). Mọi chữ template/AI thêm không có trong kịch bản tự động vào `assumptions`.
 
-**Theme:** Giấy kỹ thuật · Tối điện ảnh · Minh họa phẳng tươi sáng · Biên tập tạp chí · Bảng trắng vẽ tay (nét bút dạ dùng `feTurbulence` + `feDisplacementMap`). Phông: Montserrat, Inter, Be Vietnam Pro, Nunito, Lora, Patrick Hand – bản thu gọn Latin + Latin-ext + Vietnamese, nhúng base64 (HyperFrames: `@font-face` trong `index.html`; Remotion: `new FontFace(…, ArrayBuffer)` + `document.fonts.add` **đồng bộ, không `delayRender`**). Ký hiệu (→ ✓ ≈ ≤ ≥ …) lấy từ DejaVu Sans thu gọn; chỉ số dưới (CO₂) hiển thị bằng `<sub>` trong chính phông theme.
+**Theme** (danh sách đầy đủ: `THEMES` trong `packages/themes/src/tokens.ts`): Giấy kỹ thuật · Tối điện ảnh · Minh họa phẳng tươi sáng · Biên tập tạp chí · Bảng trắng vẽ tay (nét bút dạ dùng `feTurbulence` + `feDisplacementMap`) · Doanh nghiệp xanh · Bản thiết kế · Tối giản Thụy Sĩ · Rừng đêm · Pastel học đường · Cảnh báo an toàn · Mực coban · Kỹ thuật số tối · Ấm mộc · Khối màu tạp chí · Danh mục tĩnh (6 theme cuối phỏng theo ý tưởng bộ khung hình mẫu HeyGen HyperFrames, Apache-2.0). Mọi màu chữ đạt tương phản WCAG ≥ 4,5:1 trên nền và thẻ (`packages/themes/test/contrast.test.ts`, trừ vài màu vai trò ở theme cũ được liệt kê). Phông theme và cặp phông – bản thu gọn Latin + Latin-ext + Vietnamese, nhúng base64 (HyperFrames: `@font-face` trong `index.html`; Remotion: `new FontFace(…, ArrayBuffer)` + `document.fonts.add` **đồng bộ, không `delayRender`**). Ký hiệu (→ ✓ ≈ ≤ ≥ …) lấy từ DejaVu Sans thu gọn; chỉ số dưới (CO₂) hiển thị bằng `<sub>` trong chính phông theme.
 
 ### Giọng đọc
 
@@ -143,8 +143,8 @@ pnpm run cai-dat        # tải trình duyệt, kiểm tra phông/ffmpeg/CIT, d�
 pnpm dev                # web (3000) + worker/API (3001) chế độ phát triển
 pnpm start              # chạy bản đã dựng
 pnpm test               # 172 test: chuẩn hóa cách đọc (≥ 60 ca), bóc docx/xlsx, gán mốc câu, chèn nhịp, CIT client, lint cảnh (24 ca), engine
-pnpm test:render        # render video mẫu ~20 s × 5 theme × HyperFrames & Remotion, so sánh thời lượng và tiếng (~10 phút)
-pnpm gallery            # ảnh mọi template × 5 theme vào tests/.out/gallery
+pnpm test:render        # render video mẫu ~20 s × mọi theme × HyperFrames & Remotion, so sánh thời lượng và tiếng (~15 phút)
+pnpm gallery            # ảnh mọi template × mọi theme vào tests/.out/gallery
 pnpm mock-cit           # máy chủ CIT GIẢ LẬP ở cổng 8001 (âm thử, không phải giọng thật)
 pnpm e2e                # đầu-cuối không cần giao diện (đặt CVS_TTS_MOCK=1 nếu chưa có CIT)
 pnpm fixtures           # sinh lại file mẫu: 2 video docx, 1 outline, 1 xlsx
@@ -182,7 +182,7 @@ pnpm fixtures           # sinh lại file mẫu: 2 video docx, 1 outline, 1 xlsx
 |---|---|
 | 1. Core: bóc tài liệu + chuẩn hóa + timing | `Kich_ban_L1.docx` → 2 video (đoạn văn và dạng bảng), nguồn + ngữ cảnh bảng số liệu; `Outline_L2.docx` → nhận diện dàn ý; `Kich_ban_L2.xlsx` → 2 sheet/2 học phần, tự nhận cột tiếng Việt và tiếng Anh. 88 ca chuẩn hóa cách đọc đạt (toàn bộ ví dụ mục 4). |
 | 2. Client CIT + manifest | Thử lại khi 5xx, dừng khi 4xx, báo "Hãy mở CIT"; cắt/giãn nhịp đúng chỗ ngắt; hash bỏ qua cảnh không đổi. |
-| 3. HyperFrames | `npx hyperframes render` chạy thẳng trên dự án sinh ra; render dự phòng cho hình giống hệt; 13 template × 5 theme soát bằng ảnh ghép. |
+| 3. HyperFrames | `npx hyperframes render` chạy thẳng trên dự án sinh ra; render dự phòng cho hình giống hệt; mọi template × mọi theme soát bằng ảnh ghép. |
 | 4. Remotion | Cùng video: thời lượng khớp tuyệt đối, SSIM 0,997 so với HyperFrames, đường bao giọng tương quan 0,994. |
 | 5–7. Giao diện, AI, QA | Luồng tải file → phân tích → soát đọc → sản xuất → QA → duyệt → xuất chạy được qua giao diện (đã kiểm bằng Playwright, `tests/ui`). |
 | 8. Template còn lại + dọn dẹp | Đủ 12 template + cảnh nháp; dọn dẹp chuyển vào `_luu_tru`. |
