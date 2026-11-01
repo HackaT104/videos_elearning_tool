@@ -17,7 +17,7 @@ export default function DuyetIndex() {
           <tbody>
             {data?.filter((v) => v.include && !v.existing).map((v) => (
               <tr key={v.key}>
-                <td><span className="font-mono text-xs">{v.key}</span> · {v.title}</td>
+                <td><span className="num text-[13px] font-medium">{v.key}</span> <span className="text-soft">{v.title}</span></td>
                 <td>{fmtSec(v.seconds)}</td>
                 <td>{v.qaOk === null ? <Badge>chưa QA</Badge> : v.qaOk ? <Badge tone="green">đạt</Badge> : <Badge tone="red">có lỗi</Badge>}</td>
                 <td>{v.assumptions ? <Badge tone="amber">{v.assumptions} mục</Badge> : "—"}</td>

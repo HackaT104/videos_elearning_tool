@@ -17,12 +17,12 @@ export function GlossaryEditor({ project, onChange }: { project: string | null; 
   const del = (id: number) => a.run(async () => { await api(`/glossary/${id}`, { method: "DELETE" }); await reload(); onChange?.(); });
   const Table = ({ rows, title, editable }: { rows: G[]; title: string; editable: boolean }) => (
     <div className="mb-3">
-      <div className="mb-1 text-xs font-semibold uppercase text-soft">{title} ({rows.length})</div>
-      <div className="max-h-64 overflow-y-auto rounded border border-line">
+      <div className="mb-1 text-[13px] font-medium text-soft">{title} <span className="num">({rows.length})</span></div>
+      <div className="max-h-64 overflow-y-auto rounded-lg border border-line">
         <table className="tbl"><tbody>
           {rows.map((g, i) => (
-            <tr key={g.id ?? i}><td className="font-mono text-xs">{g.term}</td><td>→ {g.reading}</td><td className="text-xs text-soft">{g.caseSensitive ? "phân biệt hoa/thường" : ""}</td>
-              <td>{editable && <button className="text-xs text-red-600" onClick={() => del(g.id)}>xóa</button>}</td></tr>
+            <tr key={g.id ?? i}><td className="font-medium">{g.term}</td><td><span className="text-soft">đọc là</span> {g.reading}</td><td className="text-xs text-soft">{g.caseSensitive ? "phân biệt hoa/thường" : ""}</td>
+              <td>{editable && <button className="min-h-8 px-1 text-[12px] text-danger" onClick={() => del(g.id)}>Xoá</button>}</td></tr>
           ))}
         </tbody></table>
       </div>

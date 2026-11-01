@@ -58,7 +58,7 @@ export default function Nguon() {
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center ${drag ? "border-brand bg-emerald-50" : "border-line"}`}
+          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center ${drag ? "border-brand bg-brand-tint" : "border-line"}`}
         >
           <input type="file" multiple accept=".docx,.xlsx" className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
           <div className="text-base font-medium">Kéo-thả file .docx / .xlsx vào đây, hoặc bấm để chọn</div>
@@ -68,7 +68,7 @@ export default function Nguon() {
           <ul className="mt-3 space-y-1 text-sm">
             {files.map((f, i) => (
               <li key={i} className="flex items-center gap-2">📄 {f.name} <span className="text-soft">({Math.round(f.size / 1024)} KB)</span>
-                <button className="text-xs text-red-600" onClick={() => setFiles((x) => x.filter((_, k) => k !== i))}>bỏ</button></li>
+                <button className="text-xs text-danger" onClick={() => setFiles((x) => x.filter((_, k) => k !== i))}>bỏ</button></li>
             ))}
           </ul>
         )}
@@ -76,7 +76,7 @@ export default function Nguon() {
           <div key={fname} className="mt-4">
             <div className="mb-1 text-sm font-semibold">Ghép cột – {fname}</div>
             {list.map((s) => (
-              <div key={s.sheet} className="mb-3 overflow-x-auto rounded border border-line p-2">
+              <div key={s.sheet} className="mb-3 overflow-x-auto rounded-lg border border-line p-2">
                 <div className="mb-1 text-xs font-medium">Sheet «{s.sheet}» {s.missing.length > 0 && <Badge tone="amber">thiếu: {s.missing.join(", ")}</Badge>}</div>
                 <div className="grid grid-cols-3 gap-2 md:grid-cols-5">
                   {FIELDS.map(([f, label]) => (
@@ -102,7 +102,7 @@ export default function Nguon() {
           <h2 className="mb-2 font-semibold">Kết quả bóc</h2>
           {results.map((r, i) => (
             <div key={i} className="mb-2 text-sm">
-              <b>{r.name}</b> → {r.error ? <span className="text-red-700">{r.error}</span> : (<>
+              <b>{r.name}</b> → {r.error ? <span className="text-danger">{r.error}</span> : (<>
                 <Badge tone={r.kind === "script" ? "green" : "amber"}>{r.kind === "script" ? "Kịch bản đầy đủ" : r.kind === "outline" ? "Dàn ý" : "Chủ đề + yêu cầu"}</Badge>{" "}
                 {r.videos.length} video {r.videos.join(", ")}
                 {r.kind !== "script" && <> · <Link className="text-brand underline" href={`/p/${project!.id}/phan-tich`}>Viết kịch bản bằng AI ở bước 2</Link></>}
@@ -118,7 +118,7 @@ export default function Nguon() {
           <thead><tr><th>File</th><th>Cấp độ</th><th>Loại</th><th>Video</th><th>Thời điểm</th></tr></thead>
           <tbody>
             {project!.files.map((f) => (
-              <tr key={f.id}><td>{f.name}</td><td>{f.level}</td><td>{f.kind}</td><td className="text-xs">{f.summary?.videos?.join(", ")}</td><td className="text-xs text-soft">{new Date(f.created_at).toLocaleString("vi-VN")}</td></tr>
+              <tr key={f.id}><td>{f.name}</td><td>{f.level}</td><td>{({ script: "Kịch bản", outline: "Dàn ý", topic: "Chủ đề + yêu cầu" } as Record<string, string>)[f.kind] ?? f.kind}</td><td className="text-xs">{f.summary?.videos?.join(", ")}</td><td className="text-xs text-soft">{new Date(f.created_at).toLocaleString("vi-VN")}</td></tr>
             ))}
           </tbody>
         </table>

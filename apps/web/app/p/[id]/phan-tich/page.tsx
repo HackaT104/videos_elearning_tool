@@ -18,7 +18,7 @@ export default function PhanTich() {
   return (
     <div>
       <PageHead step={2} title="Phân tích – danh sách video">
-        <Link href={`/p/${pid}/san-xuat`} className="btn btn-primary">Sang sản xuất →</Link>
+        <Link href={`/p/${pid}/san-xuat`} className="btn btn-primary">Sang sản xuất</Link>
       </PageHead>
       {project!.warnings.length > 0 && (
         <div className="assume mb-3 text-sm">⚠ Trùng tên file giữa các cấp độ (mã video đã có tiền tố cấp độ nên không ghi đè): {project!.warnings.join("; ")}</div>
@@ -33,7 +33,7 @@ export default function PhanTich() {
               <tr key={v.key} className={v.existing ? "opacity-50" : ""}>
                 <td><input type="checkbox" checked={v.include} onChange={(e) => flag(v.key, { include: e.target.checked })} /></td>
                 <td><input type="checkbox" checked={v.existing} onChange={(e) => flag(v.key, { existing: e.target.checked })} /></td>
-                <td className="font-mono text-xs">{v.key}</td>
+                <td className="num text-[13px] font-medium">{v.key}</td>
                 <td>{v.title} {v.aiWritten && <Badge tone="amber">AI viết</Badge>}</td>
                 <td>{v.level}</td>
                 <td>{v.scenes}</td>
@@ -67,7 +67,7 @@ function AiWrite({ pid, file, disabled }: { pid: string; file: any; disabled: bo
   const a = useAction();
   const s = file.summary;
   return (
-    <div className="mb-3 rounded border border-line p-3">
+    <div className="mb-3 rounded-lg border border-line p-3">
       <div className="text-sm"><b>{file.name}</b> · {file.level} · <Badge tone="amber">{file.kind === "outline" ? "Dàn ý" : "Chủ đề"}</Badge></div>
       {s.outline ? (
         <div className="mt-1 text-xs text-soft">{s.outline.title}: {s.outline.items.map((i: any) => i.heading).join(" · ")}</div>

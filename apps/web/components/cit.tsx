@@ -11,7 +11,7 @@ export function CitLight({ full = false }: { full?: boolean }) {
   const a = useAction();
   if (!data) return <span className="text-xs text-soft">Đang kiểm tra CIT…</span>;
   const m = data.manager;
-  const dot = data.ok ? "bg-emerald-500" : m.installing || /khởi động/i.test(m.message) ? "bg-amber-400 animate-pulse" : "bg-red-500";
+  const dot = data.ok ? "bg-brand" : m.installing || /khởi động/i.test(m.message) ? "bg-warn animate-pulse" : "bg-danger";
   const text = data.ok
     ? `CIT Voice Studio đang chạy · ${data.voices} giọng`
     : m.installing
@@ -22,7 +22,7 @@ export function CitLight({ full = false }: { full?: boolean }) {
           ? "CIT Voice Studio đang tắt"
           : "Chưa cài CIT Voice Studio";
   return (
-    <span className={`inline-flex flex-wrap items-center gap-2 rounded-full border border-line bg-white px-3 py-1 text-xs ${full ? "w-full rounded-lg py-2" : ""}`}>
+    <span className={`inline-flex flex-wrap items-center gap-2 rounded-full bg-white px-3 py-1 text-xs shadow-[0_0_0_1px_rgb(19_34_43/0.12)] ${full ? "w-full rounded-lg py-2" : ""}`}>
       <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
       <span>{text}</span>
       {data.mock && <b className="text-amber-700">· giọng GIẢ LẬP</b>}
@@ -36,7 +36,7 @@ export function CitLight({ full = false }: { full?: boolean }) {
         <button className="btn py-0.5 text-xs" disabled={a.busy} onClick={() => a.run(async () => { await api("/cit/restart", { method: "POST" }); reload(); })}>Khởi động lại</button>
       )}
       {full && <a className="text-soft underline" href={data.terms} target="_blank" rel="noreferrer">Điều khoản CIT</a>}
-      {m.error && !data.ok && <span className="text-red-700">{m.error}</span>}
+      {m.error && !data.ok && <span className="text-danger">{m.error}</span>}
     </span>
   );
 }

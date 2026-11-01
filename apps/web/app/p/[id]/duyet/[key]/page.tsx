@@ -48,7 +48,7 @@ export default function Duyet() {
               <video key={qa.renderedAt} className="w-full rounded bg-black" controls preload="metadata" src={`${fileUrl(qa.rendered)}&t=${qa.renderedAt}`}>
                 <track kind="subtitles" srcLang="vi" label="Tiếng Việt" src={`/api/projects/${pid}/videos/${encodeURIComponent(key)}/vtt`} default />
               </video>
-            ) : <div className="flex aspect-video items-center justify-center rounded bg-slate-100 text-soft">Chưa render – chạy ở bước 7</div>}
+            ) : <div className="flex aspect-video items-center justify-center rounded bg-[#e9eeec] text-soft">Chưa render – chạy ở bước 7</div>}
             {qa?.renderer && <div className="mt-1 text-xs text-soft">Bộ dựng: {qa.renderer} · {qa.renderedAt && new Date(qa.renderedAt).toLocaleString("vi-VN")} · <a className="underline" href={fileUrl(qa.rendered!, true)}>Tải MP4</a></div>}
           </div>
           {qa?.sheet && (
@@ -61,7 +61,7 @@ export default function Duyet() {
             <details className="card">
               <summary className="cursor-pointer font-semibold">Tất cả khung QA ({qa.frames.length})</summary>
               <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3">
-                {qa.frames.map((f, i) => <figure key={i}><img src={fileUrl(f.file)} alt={f.label} className="rounded border border-line" /><figcaption className="text-xs text-soft">{f.label}</figcaption></figure>)}
+                {qa.frames.map((f, i) => <figure key={i}><img src={fileUrl(f.file)} alt={f.label} className="rounded-lg border border-line" /><figcaption className="text-xs text-soft">{f.label}</figcaption></figure>)}
               </div>
             </details>
           )}
@@ -69,9 +69,9 @@ export default function Duyet() {
         <div>
           <div className="card mb-4">
             <h2 className="mb-2 font-semibold">Báo cáo QA {qa ? (qa.ok ? <Badge tone="green">đạt</Badge> : <Badge tone="red">{errors.length} lỗi</Badge>) : <Badge>chưa chạy</Badge>}</h2>
-            {errors.map((i, k) => <div key={k} className="mb-1 rounded bg-red-50 px-2 py-1 text-xs text-red-800">[{i.kind}{i.scene ? ` · ${i.scene}` : ""}] {i.message}</div>)}
+            {errors.map((i, k) => <div key={k} className="mb-1 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-danger">[{i.kind}{i.scene ? ` · ${i.scene}` : ""}] {i.message}</div>)}
             {warns.map((i, k) => <div key={k} className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">[{i.kind}{i.scene ? ` · ${i.scene}` : ""}] {i.message}</div>)}
-            {qa && qa.items.length === 0 && <div className="text-sm text-emerald-700">Không phát hiện lỗi: bố cục, chữ ≥ 28 px, số liệu khớp nguồn, âm thanh AAC, không im lặng &gt; 2,5 s, thời lượng khớp.</div>}
+            {qa && qa.items.length === 0 && <div className="text-sm text-brand-dark">Không phát hiện lỗi: bố cục, chữ ≥ 28 px, số liệu khớp nguồn, âm thanh AAC, không im lặng &gt; 2,5 s, thời lượng khớp.</div>}
           </div>
           <div className="card mb-4">
             <h2 className="mb-2 font-semibold">AI / template tự quyết – cần duyệt</h2>
@@ -79,7 +79,7 @@ export default function Duyet() {
               const list = [...new Set([...(s.assumptions ?? []), ...(qa?.assumptions?.[s.id] ?? [])])];
               return (
                 <div key={s.id} className="mb-2">
-                  <div className="flex items-center gap-2 text-sm font-medium"><span className="font-mono text-xs">{s.id}</span> {s.title} <span className="text-xs text-soft">· {s.design?.template ?? "tự động"}</span>
+                  <div className="flex items-center gap-2 text-sm font-medium"><span className="num rounded-md bg-ink px-1.5 py-0.5 text-[12px] text-white">{s.id}</span> {s.title} <span className="text-xs text-soft">· {s.design?.template ?? "tự động"}</span>
                     <button className="ml-auto text-xs text-brand underline" onClick={() => custom(s.id)}>AI viết cảnh tùy biến</button></div>
                   {list.length ? list.map((x, k) => <div key={k} className="assume mt-1">{x}</div>) : <div className="text-xs text-soft">Không có</div>}
                   {s.notes?.length > 0 && <div className="mt-1 text-xs text-soft">Ghi chú đã gửi: {s.notes.join(" · ")}</div>}

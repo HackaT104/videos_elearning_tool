@@ -18,44 +18,58 @@ export default function Home() {
   const router = useRouter();
   const toggle = (l: string) => setLevels((x) => (x.includes(l) ? x.filter((y) => y !== l) : [...x, l].sort()));
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-      <section>
-        <PageHead title="Dự án" />
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-8">
+      <section className="min-w-0">
+        <PageHead title="Dự án">{data && data.length > 0 && <span className="num text-[13px] text-soft">{data.length} dự án</span>}</PageHead>
         <ErrorBox error={error ?? health.error} />
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {data?.map((p) => (
-            <Link key={p.id} href={`/p/${p.id}/nguon`} className="card hover:border-brand">
-              <div className="text-xs text-soft">{p.course} · {p.levels.join(", ")}</div>
-              <div className="text-lg font-semibold">{p.name}</div>
-              <div className="mt-1 text-sm text-soft">{p.videos} video · tạo {new Date(p.created_at).toLocaleDateString("vi-VN")}</div>
-            </Link>
-          ))}
-          {data && data.length === 0 && <div className="text-soft">Chưa có dự án nào – tạo dự án mới ở bên phải.</div>}
-        </div>
+        {data && data.length > 0 && (
+          <ul className="card divide-y divide-line/70 p-0">
+            {data.map((p) => (
+              <li key={p.id}>
+                <Link href={`/p/${p.id}/nguon`} className="row-link grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_120px_110px_16px] sm:px-5">
+                  <span className="min-w-0">
+                    <span className="block truncate text-[15px] font-semibold">{p.name}</span>
+                    <span className="num block text-[12px] text-soft">{p.course} · {p.levels.join(", ")}</span>
+                  </span>
+                  <span className="num text-right text-[13px] sm:text-left">{p.videos} video</span>
+                  <span className="num hidden text-[13px] text-soft sm:block">{new Date(p.created_at).toLocaleDateString("vi-VN")}</span>
+                  <svg className="hidden text-soft sm:block" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        {data && data.length === 0 && (
+          <div className="rounded-xl border border-dashed border-line px-5 py-10 text-center">
+            <div className="text-[15px] font-semibold">Chưa có dự án</div>
+            <p className="mx-auto mt-1 max-w-sm text-sm text-soft">Tạo dự án đầu tiên: đặt tên khoá học, mã khoá và cấp độ, rồi tải tài liệu Word hoặc Excel lên.</p>
+          </div>
+        )}
       </section>
-      <aside className="card h-fit">
-        <h2 className="mb-3 text-lg font-semibold">1 · Dự án mới</h2>
-        <label className="label">Tên khóa học</label>
-        <input className="input mb-3" value={name} onChange={(e) => setName(e.target.value)} placeholder="Tín chỉ carbon & Tiêu chuẩn VCS" />
-        <label className="label">Mã khóa (tiền tố mã video)</label>
-        <input className="input mb-3" value={course} onChange={(e) => setCourse(e.target.value.toUpperCase())} placeholder="CAR" />
-        <label className="label">Cấp độ</label>
-        <div className="mb-4 flex gap-2">
-          {["L1", "L2", "L3"].map((l) => (
-            <label key={l} className="flex items-center gap-1 text-sm">
-              <input type="checkbox" checked={levels.includes(l)} onChange={() => toggle(l)} /> {l === "L1" ? "Cơ bản (L1)" : l === "L2" ? "Trung cấp (L2)" : "Chuyên sâu (L3)"}
-            </label>
+      <aside className="card h-fit lg:sticky lg:top-4">
+        <h2 className="mb-4 text-base font-semibold">Tạo dự án mới</h2>
+        <label className="label" htmlFor="np-name">Tên khoá học</label>
+        <input id="np-name" className="input mb-3" value={name} onChange={(e) => setName(e.target.value)} placeholder="Tín chỉ carbon và Tiêu chuẩn VCS" />
+        <label className="label" htmlFor="np-code">Mã khoá (tiền tố mã video)</label>
+        <input id="np-code" className="input mb-3" value={course} onChange={(e) => setCourse(e.target.value.toUpperCase())} placeholder="CAR" />
+        <div className="label">Cấp độ</div>
+        <div className="mb-5 grid grid-cols-3 gap-1.5" role="group" aria-label="Cấp độ">
+          {(["L1", "L2", "L3"] as const).map((l) => (
+            <button key={l} type="button" aria-pressed={levels.includes(l)} onClick={() => toggle(l)} className={`seg ${levels.includes(l) ? "is-on" : ""}`}>
+              <span className="font-semibold">{l}</span>
+              <span className="text-[12px] opacity-75">{l === "L1" ? "Cơ bản" : l === "L2" ? "Trung cấp" : "Chuyên sâu"}</span>
+            </button>
           ))}
         </div>
-        <button className="btn btn-primary" disabled={a.busy || !name || !course} onClick={() => a.run(async () => { const p = await api<P>("/projects", { method: "POST", json: { name, course, levels } }); router.push(`/p/${p.id}/nguon`); })}>
+        <button className="btn btn-primary w-full justify-center" disabled={a.busy || !name || !course || !levels.length} onClick={() => a.run(async () => { const p = await api<P>("/projects", { method: "POST", json: { name, course, levels } }); router.push(`/p/${p.id}/nguon`); })}>
           Tạo dự án
         </button>
         <Msg msg={a.msg} />
         {health.data && (
-          <div className="mt-4 space-y-1 border-t border-line pt-3 text-xs text-soft">
-            <div>Lưu trữ: {health.data.storage}</div>
-            <div>Claude API: {health.data.ai ? "đã cấu hình" : "chưa có ANTHROPIC_API_KEY (thiết kế cảnh dùng chế độ tự động)"}</div>
-          </div>
+          <dl className="mt-5 space-y-1.5 border-t border-line pt-4 text-[12px]">
+            <div className="flex justify-between gap-3"><dt className="shrink-0 text-soft">Lưu trữ</dt><dd className="min-w-0 truncate text-right" title={health.data.storage}>{health.data.storage}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-soft">Claude</dt><dd className="text-right">{health.data.ai ? "đã kết nối" : <Link className="text-brand underline" href="/claude">chưa đăng nhập</Link>}</dd></div>
+          </dl>
         )}
       </aside>
     </div>

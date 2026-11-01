@@ -64,13 +64,13 @@ function ReadRow({ pid, r, onSaved }: { pid: string; r: Row; onSaved: () => void
   });
   return (
     <tr>
-      <td className="whitespace-nowrap font-mono text-xs">{r.key}<br />{r.scene} · câu {r.idx + 1}</td>
+      <td className="num whitespace-nowrap text-[12px] font-medium">{r.key}<br />{r.scene} · câu {r.idx + 1}</td>
       <td className="text-sm">{r.text}<div className="mt-1 flex flex-wrap gap-1">{r.rules.map((x) => <Badge key={x}>{x}</Badge>)}</div></td>
       <td>
         <textarea className="input text-sm" rows={3} value={tts} onChange={(e) => setTts(e.target.value)} />
         <div className="mt-1 flex flex-wrap gap-1">
           {["[nghỉ 500ms]", "[nghỉ 1s]", "[cười]", "[thở dài]", "[hắng giọng]"].map((t) => (
-            <button key={t} type="button" className="rounded border border-line px-1.5 py-0.5 text-[11px] text-soft hover:bg-slate-50" title="Thẻ điều khiển cách đọc của CIT Voice Studio" onClick={() => setTts((x) => `${x.trimEnd()} ${t}`)}>+ {t}</button>
+            <button key={t} type="button" className="rounded-lg border border-line px-1.5 py-0.5 text-[11px] text-soft hover:bg-paper" title="Thẻ điều khiển cách đọc của CIT Voice Studio" onClick={() => setTts((x) => `${x.trimEnd()} ${t}`)}>+ {t}</button>
           ))}
         </div>
         {r.warnings.map((w) => <div key={w} className="assume mt-1">⚠ {w}</div>)}
@@ -80,7 +80,7 @@ function ReadRow({ pid, r, onSaved }: { pid: string; r: Row; onSaved: () => void
       <td className="space-y-1">
         <button className="btn w-full justify-center" disabled={tts === r.tts || a.busy} onClick={save}>Lưu</button>
         <button className="btn w-full justify-center" disabled={a.busy} onClick={listen}>{a.busy ? "…" : "▶ Nghe thử"}</button>
-        {a.msg && !a.msg.ok && <div className="text-xs text-red-700">{a.msg.text}</div>}
+        {a.msg && !a.msg.ok && <div className="text-xs text-danger">{a.msg.text}</div>}
       </td>
     </tr>
   );

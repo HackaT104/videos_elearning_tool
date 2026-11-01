@@ -104,7 +104,7 @@ export default function GiongCit() {
           </div>
         </div>
         <button className="btn btn-primary mt-3" disabled={a.busy} onClick={() => apply({ voice: { speed, temperature: temp, seed: fixedSeed ? seed : null, useDict } }, `Đã áp dụng tuỳ chọn đọc cho ${scopeLabel}`)}>Áp dụng tuỳ chọn cho {scopeLabel}</button>
-        <div className="mt-3 rounded bg-slate-50 px-3 py-2 text-xs text-soft">
+        <div className="mt-3 rounded-lg bg-paper px-3 py-2 text-xs text-soft">
           Thẻ điều khiển trong lời đọc (thêm ở bước 3): <code>[nghỉ 2s]</code> <code>[nghỉ 500ms]</code> khoảng lặng · <code>[cười]</code> <code>[thở dài]</code> <code>[hắng giọng]</code> biểu cảm.
         </div>
       </div>
@@ -196,7 +196,7 @@ function VideoRow({ pid, v, names, edge, onSaved }: { pid: string; v: VideoSum; 
   };
   return (
     <tr>
-      <td className="font-mono text-xs">{v.key}</td>
+      <td className="num text-[13px] font-medium">{v.key}</td>
       <td><select className="input" value={v.voice.provider} onChange={(e) => save({ voice: { provider: e.target.value, voiceId: e.target.value === "edge" ? edge?.male : names[0] ?? "Hải Đăng" } })}><option value="cit">CIT</option><option value="edge">Edge (dự phòng)</option></select></td>
       <td>{v.voice.provider === "cit" ? (
         <select className="input" value={v.voice.voiceId} onChange={(e) => save({ voice: { voiceId: e.target.value } })}>{[...new Set([...names, v.voice.voiceId])].map((n) => <option key={n}>{n}</option>)}</select>

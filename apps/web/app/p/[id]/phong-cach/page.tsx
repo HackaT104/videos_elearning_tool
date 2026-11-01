@@ -20,6 +20,12 @@ export default function PhongCach() {
   const a = useAction();
   const s = project!.settings;
   useEffect(() => setPicked(s.style), [s.style]);
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setZoom(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
   const shots = styles.data?.previews;
   const busy = !!styles.data?.job;
   const stamp = shots ? shots.styles.length : 0;
@@ -54,7 +60,7 @@ export default function PhongCach() {
   return (
     <div>
       <PageHead step={5} title="Chọn phong cách video">
-        {s.styleConfirmed ? <Badge tone="green">Đã chọn: {meta.data?.themes.find((t) => t.id === s.style)?.name}</Badge> : <Badge tone="amber">Chưa chọn – bắt buộc trước khi sản xuất</Badge>}
+        {s.styleConfirmed ? <Badge tone="green">Đã chọn: {meta.data?.themes.find((t) => t.id === s.style)?.name}</Badge> : <Badge tone="amber">Chưa chọn, bắt buộc trước khi sản xuất</Badge>}
       </PageHead>
       <Msg msg={a.msg} />
       <div className="card mb-4">
@@ -63,8 +69,8 @@ export default function PhongCach() {
           <b> Dùng phong cách này</b>. Có thể đổi riêng từng video ở cuối trang.
         </p>
         <div className="mb-3 flex flex-wrap items-end gap-2">
-          <label className="text-xs">Dựng mẫu từ video
-            <select className="input mt-0.5 w-72" value={sample} onChange={(e) => setSample(e.target.value)}>
+          <label className="label mb-0">Dựng mẫu từ video
+            <select className="input mt-1 w-full sm:w-80" value={sample} onChange={(e) => setSample(e.target.value)}>
               {vids.data?.map((v) => <option key={v.key} value={v.key}>{v.key} – {v.title}</option>)}
             </select>
           </label>
@@ -76,11 +82,11 @@ export default function PhongCach() {
             const shot = shots?.styles.find((x) => x.style === t.id);
             const sel = picked === t.id;
             return (
-              <div key={t.id} className={`rounded-lg border-2 p-2 transition ${sel ? "border-brand ring-2 ring-brand/30" : "border-line"}`}>
-                <button type="button" className="block w-full overflow-hidden rounded" style={{ background: t.colors.bg }} onClick={() => (shot ? setZoom(shot.file) : setPicked(t.id))} aria-label={`Xem lớn mẫu ${t.name}`}>
+              <div key={t.id} className={`style-card ${sel ? "is-picked" : ""}`}>
+                <button type="button" className="block w-full overflow-hidden rounded-lg" style={{ background: t.colors.bg }} onClick={() => (shot ? setZoom(shot.file) : setPicked(t.id))} aria-label={`Xem lớn mẫu ${t.name}`}>
                   <div className="aspect-video">
                     {shot ? (
-                      <img src={`${fileUrl(shot.file)}&v=${stamp}-${busy ? 1 : 0}`} alt={t.name} className="h-full w-full object-cover" />
+                      <img src={`${fileUrl(shot.file)}&v=${stamp}-${busy ? 1 : 0}`} alt={t.name} className="shot h-full w-full rounded-lg object-cover" />
                     ) : (
                       <div className="flex h-full items-center justify-center gap-2 p-4">
                         {["ink", "accent", "alt", "money", "warn"].map((k) => <span key={k} className="h-7 w-7 rounded-full border border-black/10" style={{ background: t.colors[k] }} />)}
@@ -90,10 +96,10 @@ export default function PhongCach() {
                 </button>
                 <div className="mt-2 flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-semibold">{t.name} {s.styleConfirmed && s.style === t.id && <Badge tone="green">đang dùng</Badge>}</div>
-                    <div className="text-xs text-soft">{t.description}</div>
+                    <div className="flex flex-wrap items-center gap-1.5 font-semibold">{t.name} {s.styleConfirmed && s.style === t.id && <Badge tone="green">đang dùng</Badge>}</div>
+                    <div className="text-[12px] leading-snug text-soft">{t.description}</div>
                   </div>
-                  <button className={`btn shrink-0 ${sel ? "btn-primary" : ""}`} onClick={() => setPicked(t.id)}>{sel ? "✓ Đã chọn" : "Chọn"}</button>
+                  <button className={`btn shrink-0 ${sel ? "btn-primary" : ""}`} aria-pressed={sel} onClick={() => setPicked(t.id)}>{sel ? "Đã chọn" : "Chọn"}</button>
                 </div>
               </div>
             );
@@ -106,17 +112,18 @@ export default function PhongCach() {
       </div>
 
       {zoom && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setZoom(null)} role="dialog" aria-label="Xem lớn">
-          <img src={fileUrl(zoom)} alt="Mẫu phóng to" className="max-h-full max-w-full rounded" />
+        <div className="zoom fixed inset-0 z-50 flex items-center justify-center bg-ink/85 p-4" onClick={() => setZoom(null)} role="dialog" aria-modal="true" aria-label="Xem lớn mẫu phong cách">
+          <img src={fileUrl(zoom)} alt="Mẫu phóng to" className="max-h-full max-w-full rounded-xl shadow-2xl" />
+          <button className="btn absolute right-4 top-4" style={{ marginTop: "env(safe-area-inset-top)" }} onClick={() => setZoom(null)}>Đóng</button>
         </div>
       )}
 
       <div className="card mb-4">
-        <h2 className="mb-2 font-semibold">Bộ dựng cho cả dự án</h2>
+        <h2 className="mb-2 text-base font-semibold">Bộ dựng cho cả dự án</h2>
         <div className="flex flex-wrap gap-2">
           {(["hyperframes", "remotion"] as const).map((e) => (
             <button key={e} className={`btn ${s.engine === e ? "btn-primary" : ""}`} onClick={() => setProject({ engine: e })}>
-              {e === "hyperframes" ? "HyperFrames (HTML + GSAP) – mặc định" : "Remotion (React)"}
+              {e === "hyperframes" ? "HyperFrames (HTML + GSAP), mặc định" : "Remotion (React)"}
             </button>
           ))}
         </div>
@@ -124,13 +131,13 @@ export default function PhongCach() {
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="mb-2 font-semibold">Đổi riêng từng video</h2>
+        <h2 className="mb-2 text-base font-semibold">Đổi riêng từng video</h2>
         <table className="tbl">
           <thead><tr><th>Video</th><th>Phong cách</th><th>Bộ dựng</th><th></th></tr></thead>
           <tbody>
             {vids.data?.filter((v) => v.include && !v.existing).map((v) => (
               <tr key={v.key}>
-                <td className="font-mono text-xs">{v.key}</td>
+                <td className="num text-[13px] font-medium">{v.key}</td>
                 <td><select className="input" value={v.style} onChange={(e) => setVideo(v.key, { style: e.target.value })}>{meta.data?.themes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
                 <td><select className="input" value={v.engine} onChange={(e) => setVideo(v.key, { engine: e.target.value })}><option value="hyperframes">HyperFrames</option><option value="remotion">Remotion</option></select></td>
                 <td><button className="btn" disabled={!v.rendered || a.busy} onClick={() => rerender(v)}>Dựng lại bằng bộ kia</button></td>

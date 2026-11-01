@@ -53,7 +53,7 @@ function SceneEditor({ scene: s, T, templates, onChange }: { scene: Scene; T: an
   return (
     <div className="card mb-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="rounded bg-ink px-2 py-0.5 font-mono text-xs text-white">{s.id}</span>
+        <span className="num rounded-md bg-ink px-2 py-0.5 text-[12px] font-medium text-white">{s.id}</span>
         <input className="input w-64 font-semibold" value={s.title} onChange={(e) => onChange((x) => { x.title = e.target.value; })} />
         <span className="text-xs text-soft">Kịch bản {fmtSec(s.scriptStart)}–{fmtSec(s.scriptEnd)}{T ? ` · video ${T.start.toFixed(1)}–${(T.start + T.dur).toFixed(1)} s${T.estimated ? " (ước tính)" : ""}` : ""}</span>
       </div>
@@ -74,7 +74,7 @@ function SceneEditor({ scene: s, T, templates, onChange }: { scene: Scene; T: an
               <td><textarea className={`input ${x.tts !== x.text ? "bg-sky-50" : ""}`} rows={2} value={x.tts} onChange={(e) => onChange((y) => { y.sentences[k].tts = e.target.value; y.sentences[k].ttsLocked = true; })} />
                 {x.ttsLocked && <Badge tone="blue">sửa tay</Badge>}</td>
               <td className="text-xs text-soft">{T ? `${T.cues[k]?.toFixed(2)}–${T.ends[k]?.toFixed(2)}` : ""}</td>
-              <td><button className="text-xs text-red-600" onClick={() => onChange((y) => { y.sentences.splice(k, 1); })}>✕</button></td>
+              <td><button className="text-xs text-danger" onClick={() => onChange((y) => { y.sentences.splice(k, 1); })}>✕</button></td>
             </tr>
           ))}
         </tbody>
@@ -94,7 +94,7 @@ function SceneEditor({ scene: s, T, templates, onChange }: { scene: Scene; T: an
           {s.design && s.design.template !== "custom" && (
             <div>
               <textarea className="input font-mono text-xs" rows={8} value={params} onChange={(e) => setParams(e.target.value)} onBlur={() => { try { const p = JSON.parse(params); setPerr(null); onChange((y) => { y.design = { ...y.design!, params: p, by: "user" }; }); } catch (e) { setPerr((e as Error).message); } }} />
-              {perr && <div className="text-xs text-red-700">JSON lỗi: {perr}</div>}
+              {perr && <div className="text-xs text-danger">JSON lỗi: {perr}</div>}
               <div className="text-xs text-soft">"at": {"{cue: chỉ số câu (0…), f: 0–1}"} – phần tử xuất hiện khi giọng nói tới đoạn đó.</div>
             </div>
           )}
