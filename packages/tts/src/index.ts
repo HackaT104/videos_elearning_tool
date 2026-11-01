@@ -6,3 +6,4 @@ export * from "./edge";
 export * from "./synth";
 export * from "./mock";
 export * from "./mock-server";
+export * from "./cit-manager";

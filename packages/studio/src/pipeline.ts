@@ -3,17 +3,18 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { computeTiming, type Timing, type Video } from "@cvs/core";
+import { checkTts, computeTiming, renormalizeVideo, type Timing, type Video } from "@cvs/core";
 import { aiAvailable, designScene, reviseScene, visionReview, writeCustomScene } from "@cvs/ai";
-import { getVideo, paths, setVideoFlags, setVideoQa, upsertVideo, type ProjectSettings } from "@cvs/db";
+import { getVideo, glossaryFor, paths, setVideoFlags, setVideoQa, upsertVideo, type ProjectSettings } from "@cvs/db";
 import { autoDesign, qaTimes, type BuildInput, type PreviewResult, type RenderEngine } from "@cvs/engine";
 import { contactSheet, createHyperFramesEngine, launchBrowser, lintErrors, lintScene } from "@cvs/engine-hf";
 import { createRemotionEngine, lintRemotionScene } from "@cvs/engine-rmt";
 import { audioQa, contentQa, layoutItems, makeReport, type QaItem, type QaReport } from "@cvs/qa";
-import { CitClient, loadManifest, mockGenerate, synthesizeVideo } from "@cvs/tts";
+import { CitClient, ensureCitRunning, loadManifest, mockGenerate, synthesizeVideo } from "@cvs/tts";
 
-export type StepName = "voice" | "timing" | "design" | "build" | "qa" | "render" | "final-qa";
+export type StepName = "normalize" | "voice" | "timing" | "design" | "build" | "qa" | "render" | "final-qa";
 export const STEP_LABELS: Record<StepName, string> = {
+  normalize: "Chuẩn hoá",
   voice: "Giọng & cắt/giãn",
   timing: "Timing",
   design: "Dựng cảnh",
@@ -64,8 +65,13 @@ export async function stepVoice(ctx: Ctx, force = false) {
   const useMock = process.env.CVS_TTS_MOCK === "1";
   const cit = new CitClient();
   if (video.voice.provider === "cit" && !useMock) {
-    const st = await cit.status();
-    if (!st.ok) throw new Error("Không kết nối được CIT Voice Studio. Hãy mở CIT Voice Studio rồi bấm Thử lại.");
+    let st = await cit.status();
+    if (!st.ok) {
+      ctx.progress("voice", 1, "Đang khởi động CIT Voice Studio…");
+      await ensureCitRunning().catch(() => false);
+      st = await cit.status();
+    }
+    if (!st.ok) throw new Error("CIT Voice Studio chưa chạy được. Vào trang Giọng đọc CIT để cài/khởi động lại, rồi bấm Thử lại.");
   }
   await synthesizeVideo(video, voDir, {
     cit,
@@ -218,18 +224,58 @@ export async function stepRender(ctx: Ctx) {
 }
 
 export const JOB_STEPS: Record<string, StepName[]> = {
-  produce: ["voice", "design", "qa", "render"],
-  voice: ["voice"],
+  produce: ["normalize", "voice", "design", "qa", "render"],
+  voice: ["normalize", "voice"],
   visual: ["design", "qa", "render"],
   render: ["qa", "render"],
   design: ["design", "qa"],
 };
 
-export async function runSteps(ctx: Ctx, steps: StepName[], payload: { forceVoice?: boolean; redesign?: boolean } = {}) {
+export type ReadingIssue = { scene: string; idx: number; text: string; tts: string; warnings: string[] };
+
+/** Câu chưa sửa tay mà cách đọc còn chữ số / viết tắt / từ tiếng Anh. Câu đã sửa tay (khóa) coi như người dùng đã duyệt. */
+export function readingIssues(video: Video): ReadingIssue[] {
+  const out: ReadingIssue[] = [];
+  for (const s of video.scenes)
+    s.sentences.forEach((x, idx) => {
+      if (x.ttsLocked) return;
+      const w = checkTts(x.tts);
+      if (w.length) out.push({ scene: s.id, idx, text: x.text, tts: x.tts, warnings: w });
+    });
+  return out;
+}
+
+/**
+ * Bước "Chuẩn hoá" (bắt buộc trước khi tạo giọng): áp lại bảng thuật ngữ mới nhất cho mọi câu chưa sửa tay,
+ * rồi dừng nếu còn câu có thể đọc sai – trừ khi người dùng chọn bỏ qua.
+ */
+export async function stepNormalize(ctx: Ctx, ignoreWarnings = false) {
+  const row = getVideo(ctx.projectId, ctx.key);
+  if (!row) throw new Error(`Không có video ${ctx.key}`);
+  const video = renormalizeVideo(row.data, { glossary: glossaryFor(ctx.projectId) });
+  upsertVideo(ctx.projectId, video);
+  const issues = readingIssues(video);
+  ctx.progress("normalize", 100, issues.length ? `${issues.length} câu cần soát` : "Cách đọc đã chuẩn");
+  if (issues.length && !ignoreWarnings) {
+    const ex = issues.slice(0, 3).map((i) => `${i.scene} câu ${i.idx + 1}: ${i.warnings.join("; ")}`).join(" | ");
+    throw new Error(`Còn ${issues.length} câu có thể đọc sai – sửa ở bước "Chuẩn hoá cách đọc" rồi bấm Thử lại, hoặc chọn "Bỏ qua cảnh báo đọc". Ví dụ: ${ex}`);
+  }
+}
+
+/** Chặn render khi người dùng chưa chọn phong cách từ 10 mẫu. */
+export function assertStyleChosen(ctx: Ctx, payload: { skipStyle?: boolean } = {}) {
+  if (!payload.skipStyle && !ctx.settings.styleConfirmed) {
+    throw new Error('Chưa chọn phong cách video – vào bước "Chọn phong cách", chọn 1 trong 10 mẫu rồi bấm Thử lại.');
+  }
+}
+
+export async function runSteps(ctx: Ctx, steps: StepName[], payload: { forceVoice?: boolean; redesign?: boolean; ignoreReading?: boolean; skipStyle?: boolean } = {}) {
+  if (steps.includes("render")) assertStyleChosen(ctx, payload);
   for (const s of steps) {
     if (ctx.shouldStop()) throw new Stopped();
     ctx.progress(s, 0);
-    if (s === "voice") await stepVoice(ctx, payload.forceVoice);
+    if (s === "normalize") await stepNormalize(ctx, payload.ignoreReading);
+    else if (s === "voice") await stepVoice(ctx, payload.forceVoice);
     else if (s === "design") await stepDesign(ctx, { redesign: payload.redesign });
     else if (s === "build") await stepBuild(ctx);
     else if (s === "qa") await stepQa(ctx);

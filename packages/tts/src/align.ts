@@ -4,7 +4,7 @@ import type { Cue } from "@cvs/core";
 
 /** Số ký tự "có nghĩa" (bỏ khoảng trắng và dấu câu – CIT có thể trả dấu câu khác). */
 export function charLen(s: string): number {
-  return s.replace(/[\s\p{P}\p{S}]/gu, "").length;
+  return s.replace(/\[[^\[\]\n]{1,24}\]/g, "").replace(/[\s\p{P}\p{S}]/gu, "").length;
 }
 
 export type SentenceSpan = { start: number; end: number };

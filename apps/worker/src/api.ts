@@ -14,9 +14,9 @@ import {
   listProjects, listVideos, paths, setVideoFlags, STORAGE, updateJob, updateProject, upsertVideo, activeJobFor, cacheVoices, listVoices, type JobKind,
 } from "@cvs/db";
 import {
-  archiveItems, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, openFolder, renormalizeProject,
+  archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject,
 } from "@cvs/studio";
-import { CitClient } from "@cvs/tts";
+import { CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, installCit, restartCit } from "@cvs/tts";
 import { THEMES, THEME_IDS } from "@cvs/themes";
 import { TEMPLATES, ICON_NAMES } from "@cvs/engine";
 import { aiAvailable } from "@cvs/ai";
@@ -48,8 +48,32 @@ app.get("/tts/status", async (c) => {
       /* bỏ qua */
     }
   }
-  return c.json({ ...st, url: cit.baseUrl, mock: process.env.CVS_TTS_MOCK === "1" });
+  return c.json({ ...st, url: cit.baseUrl, mock: process.env.CVS_TTS_MOCK === "1", manager: citManagerState(), terms: CIT_TERMS_URL });
 });
+app.get("/claude/status", (c) => c.json({ ...claudeAuthStatus(), available: aiAvailable() }));
+app.post("/claude/key", async (c) => {
+  const { apiKey } = await c.req.json();
+  saveClaudeKey(String(apiKey ?? ""));
+  return c.json(await testClaude());
+});
+app.post("/claude/login", async (c) => {
+  await startClaudeLogin();
+  return c.json(claudeAuthStatus());
+});
+app.post("/claude/logout", async (c) => {
+  await claudeLogout();
+  return c.json(claudeAuthStatus());
+});
+app.post("/claude/test", async (c) => c.json(await testClaude()));
+app.get("/cit/manager", (c) => c.json(citManagerState()));
+app.post("/cit/install", (c) => {
+  // chạy nền: tải ~400 MB rồi cài; giao diện đọc tiến độ qua /cit/manager
+  installCit()
+    .then(() => ensureCitRunning())
+    .catch(() => undefined);
+  return c.json({ ok: true });
+});
+app.post("/cit/restart", async (c) => c.json({ ok: await restartCit() }));
 app.get("/tts/voices", (c) => c.json(listVoices(c.req.query("provider"))));
 app.post("/open-folder", async (c) => {
   const { path } = await c.req.json();
@@ -92,17 +116,46 @@ app.post("/projects/:id/upload", async (c) => {
   const level = String(form.get("level") ?? "L1");
   const maps = form.get("columnMaps") ? (JSON.parse(String(form.get("columnMaps"))) as Record<string, ColumnMap>) : undefined;
   const out = [];
+  let firstKey: string | undefined;
   for (const f of form.getAll("files")) {
     if (typeof f === "string") continue;
     const buf = Buffer.from(await f.arrayBuffer());
     try {
       const r = await ingestFile(id, f.name, buf, level, maps);
       out.push({ name: f.name, kind: r.result.kind, videos: r.result.videos.map((v) => v.key), warnings: r.result.warnings, outline: r.result.outline, topic: r.result.topic, fileId: r.fileId });
+      firstKey ??= r.result.videos[0]?.key;
     } catch (e) {
       out.push({ name: f.name, error: (e as Error).message });
     }
   }
+  // Tự dựng sẵn 10 mẫu phong cách từ chính video vừa tải lên để người dùng chọn trước khi sản xuất.
+  const p = getProject(id);
+  if (firstKey && p && !p.settings.styleConfirmed) enqueueJob(id, "theme-preview", firstKey, {});
   return c.json(out);
+});
+app.get("/projects/:id/styles", (c) => {
+  const id = c.req.param("id");
+  const job = listJobs(id, 50).find((j) => j.kind === "theme-preview" && ["queued", "running"].includes(j.status)) ?? null;
+  return c.json({ previews: listStylePreviews(id), job });
+});
+app.get("/projects/:id/progress", async (c) => {
+  // Trạng thái từng bước – giao diện dùng để dẫn người dùng đi đúng thứ tự.
+  const id = c.req.param("id");
+  const p = getProject(id);
+  if (!p) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  const vids = listVideos(id).filter((v) => v.include && !v.existing);
+  const reading = vids.reduce((n, v) => n + readingIssues(v.data).length, 0);
+  const cit = await new CitClient().status();
+  return c.json({
+    uploaded: listFiles(id).length > 0,
+    videos: vids.length,
+    reading,
+    styleConfirmed: !!p.settings.styleConfirmed,
+    style: p.settings.style,
+    citOk: cit.ok || process.env.CVS_TTS_MOCK === "1",
+    rendered: vids.filter((v) => existsSync(paths.render(id, v.key))).length,
+    approved: vids.filter((v) => v.approved).length,
+  });
 });
 app.post("/xlsx-headers", async (c) => {
   const form = await c.req.formData();
@@ -223,7 +276,7 @@ app.post("/projects/:id/voice-preset", async (c) => {
   // áp cấu hình giọng/nhịp theo cấp độ (xen kẽ nam/nữ cho Cơ bản)
   const id = c.req.param("id");
   const b = await c.req.json();
-  const vids = listVideos(id).filter((v) => !b.level || v.level === b.level);
+  const vids = listVideos(id).filter((v) => (!b.level || v.level === b.level) && (!b.keys?.length || b.keys.includes(v.key)) && v.include && !v.existing);
   vids.forEach((v, i) => {
     const d = v.data;
     const preset = LEVEL_PRESETS[tierOfLevel(d.level)];
@@ -247,7 +300,7 @@ app.post("/projects/:id/jobs", async (c) => {
   const keys = b.keys?.length ? b.keys : [null];
   const jobs = keys.map((k) => {
     const active = k ? activeJobFor(id, k) : null;
-    if (active && ["produce", "voice", "visual", "render", "design", "revise"].includes(b.kind)) return active;
+    if (active && ["agent", "produce", "voice", "visual", "render", "design", "revise"].includes(b.kind)) return active;
     return enqueueJob(id, b.kind, k, b.payload ?? {});
   });
   return c.json(jobs);

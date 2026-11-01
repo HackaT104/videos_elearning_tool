@@ -18,6 +18,13 @@ html, body { background: var(--color-paper); color: var(--color-ink); }
 .card { @apply rounded-lg border border-line bg-white p-4 shadow-sm; }
 .label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-soft; }
 .tbl { @apply w-full text-sm; }
+.card:has(> .tbl), .card:has(> table) { @apply overflow-x-auto; }
+@media (max-width: 640px) {
+  .card { @apply p-3; }
+  .btn { @apply px-2.5 py-2; }
+  h1 { font-size: 1.35rem !important; }
+}
+body { padding-bottom: env(safe-area-inset-bottom); }
 .tbl th { @apply border-b border-line bg-slate-50 px-2 py-1.5 text-left text-xs font-semibold text-soft; }
 .tbl td { @apply border-b border-line px-2 py-1.5 align-top; }
 .assume { @apply rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900; }

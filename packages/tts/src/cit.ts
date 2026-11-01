@@ -18,7 +18,7 @@ export class CitClientError extends Error {
   }
 }
 
-export type CitVoice = { id: string; name: string; gender?: string; raw?: unknown };
+export type CitVoice = { id: string; name: string; gender?: string; region?: string; description?: string; cloned?: boolean; raw?: unknown };
 
 export type CitOptions = {
   baseUrl?: string;
@@ -36,6 +36,8 @@ export type CitGenerateRequest = {
   temperature?: number;
   format?: "wav" | "mp3";
   use_pronunciation_dict?: boolean;
+  seed?: number;
+  language?: string;
 };
 
 export type CitGenerateResult = { audio: Buffer; cues: Cue[]; format: string };
@@ -101,7 +103,7 @@ export class CitClient {
     return list.map((v) =>
       typeof v === "string"
         ? { id: v, name: v }
-        : { id: String(v.voice_id ?? v.id ?? v.name), name: String(v.name ?? v.voice_id ?? v.id), gender: v.gender, raw: v },
+        : { id: String(v.voice_id ?? v.id ?? v.name), name: String(v.name ?? v.voice_id ?? v.id), gender: v.gender, region: v.region, description: v.description, cloned: !!v.isCloned, raw: v },
     );
   }
 
@@ -110,7 +112,7 @@ export class CitClient {
    * Thử lại 3 lần × 5 s; lỗi 4xx dừng ngay; "fetch failed" → CitUnavailableError.
    */
   async generate(req: CitGenerateRequest): Promise<CitGenerateResult> {
-    const body = JSON.stringify({ temperature: 0.7, format: "wav", use_pronunciation_dict: true, ...req });
+    const body = JSON.stringify({ format: "wav", use_pronunciation_dict: true, ...req });
     let lastErr: unknown;
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, this.retryDelayMs));

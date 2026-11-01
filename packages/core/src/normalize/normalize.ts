@@ -185,12 +185,31 @@ function capitalizeFirst(s: string): string {
   return s.slice(0, i) + s[i].toLocaleUpperCase("vi") + s.slice(i + 1);
 }
 
-export function checkTts(tts: string): string[] {
+// Âm tiết tiếng Việt viết không dấu: phụ âm đầu + vần + phụ âm cuối hợp lệ.
+const VI_SYLLABLE = /^(ngh|ng|nh|ch|gh|gi|kh|ph|qu|th|tr|[bcdđghklmnpqrstvx])?[aăâeêioôơuưy]+(ng|nh|ch|[cmnpt])?$/i;
+const VI_LOANS = new Set(["ok", "email", "video", "online", "internet", "website", "file", "web"]);
+
+/** Từ Latin không phải âm tiết tiếng Việt (có thể là tiếng Anh: baseline, offset, registry…). */
+export function findForeignWords(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/(?<![\p{L}\p{N}])[A-Za-z]{2,}(?![\p{L}\p{N}])/gu)) {
+    const w = m[0];
+    if (w === w.toUpperCase()) continue; // viết hoa toàn bộ: đã báo ở mục viết tắt
+    if (VI_LOANS.has(w.toLowerCase())) continue;
+    if (!VI_SYLLABLE.test(w) || /[fjwz]/i.test(w)) out.add(w);
+  }
+  return [...out];
+}
+
+export function checkTts(raw: string): string[] {
+  const tts = raw.replace(/\[[^\[\]\n]{1,24}\]/g, " ");
   const w: string[] = [];
   const digits = tts.match(/\d+/g);
   if (digits) w.push(`Còn chữ số: ${[...new Set(digits)].join(", ")}`);
   const caps = tts.match(/(?<![\p{L}])\p{Lu}{2,}\p{Ll}?(?![\p{L}])/gu);
   if (caps) w.push(`Còn cụm viết hoa (có thể đọc sai): ${[...new Set(caps)].join(", ")}`);
+  const foreign = findForeignWords(tts);
+  if (foreign.length) w.push(`Từ tiếng Anh/nước ngoài (thêm cách đọc vào thuật ngữ): ${foreign.join(", ")}`);
   return w;
 }
 
@@ -198,14 +217,16 @@ export function createNormalizer(opts: NormalizeOptions = {}) {
   const glossary = opts.noDefaults ? mergeGlossary(opts.glossary) : mergeGlossary(DEFAULT_GLOSSARY, opts.glossary);
   const rules = buildRules(glossary);
   return function normalize(text: string): NormalizeResult {
-    let s = text;
+    // Giữ nguyên thẻ CIT ([nghỉ 2s], [cười]…): thay bằng ký hiệu tạm trong lúc chuẩn hóa.
+    const tags: string[] = [];
+    let s = text.replace(/\[[^\[\]\n]{1,24}\]/g, (m) => ` \uE000${String.fromCharCode(0xe100 + tags.push(m) - 1)}\uE001 `);
     const applied: string[] = [];
     for (const r of rules) {
       const next = r.apply(s);
       if (next !== s) applied.push(r.name);
       s = next;
     }
-    s = capitalizeFirst(tidy(s));
+    s = capitalizeFirst(tidy(s)).replace(/\uE000([\uE100-\uE1FF])\uE001/g, (_, c: string) => tags[c.charCodeAt(0) - 0xe100]);
     const changed = s !== text.trim();
     return { text, tts: s, changed, rules: applied, warnings: checkTts(s) };
   };

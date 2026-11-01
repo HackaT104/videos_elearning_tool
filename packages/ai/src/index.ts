@@ -219,3 +219,27 @@ Trả về DUY NHẤT JSON: {"issues": [{"scene": "sN", "severity": "P0"|"P1"|"P
 export async function reviseScene(video: Video, scene: Scene, note: string, T?: SceneTiming): Promise<DesignResult> {
   return designScene(video, scene, T, note);
 }
+
+// ---------------- Sửa cách đọc (agent) ----------------
+
+export type ReadingFix = { id: string; tts: string; glossary?: { term: string; reading: string }[]; note?: string };
+
+/** Đề xuất cách đọc tiếng Việt cho các câu còn chữ số / viết tắt / từ tiếng Anh. Không đổi nghĩa, không thêm bớt ý. */
+export async function fixReadings(items: { id: string; text: string; tts: string; warnings: string[] }[], context = ""): Promise<ReadingFix[]> {
+  if (items.length === 0) return [];
+  const r = await askJson<{ fixes: ReadingFix[] }>(
+    {
+      system: `Bạn chuẩn hoá văn bản cho máy đọc tiếng Việt (TTS) trong khóa học e-learning. Viết lại "tts" để máy đọc đúng: số → chữ (kiểu Việt: 423,9 → "bốn trăm hai mươi ba phẩy chín"; phiên bản 5.0 → "năm chấm không"), ngày tháng → "ngày … tháng … năm …", ký hiệu (CO₂ → "xê ô hai"), viết tắt đọc theo chữ cái tiếng Việt (VCS → "vê xê ét") hoặc đọc nghĩa nếu quen dùng (GHG → "khí nhà kính"), thuật ngữ tiếng Anh → phiên âm tiếng Việt dễ đọc hoặc từ tiếng Việt tương đương đúng chuyên ngành. Giữ nguyên ý, không thêm bớt nội dung, giữ nguyên thẻ [nghỉ …], [cười]. ${RULES}`,
+      content: `Ngữ cảnh khóa học: ${context.slice(0, 2000)}
+
+Các câu cần sửa (JSON):
+${JSON.stringify(items, null, 1)}
+
+Trả về DUY NHẤT JSON: {"fixes": [{"id": string, "tts": string, "glossary": [{"term": string, "reading": string}], "note": string}]}
+- "glossary": thuật ngữ nên lưu để dùng lại cho các câu khác (term = nguyên văn trong lời thoại).`,
+      effort: "medium",
+    },
+    (v) => (Array.isArray(v.fixes) ? [] : ["Thiếu fixes"]),
+  );
+  return r.fixes.filter((f) => items.some((i) => i.id === f.id) && f.tts?.trim());
+}

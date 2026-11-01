@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { THEMES, checkThemeFonts, fontFaceCss } from "@cvs/themes";
-import { CitClient, FFMPEG, FFPROBE, run } from "@cvs/tts";
+import { CitClient, FFMPEG, FFPROBE, findCitExecutable, installCit, run } from "@cvs/tts";
 
 const ROOT = join(import.meta.dirname, "..");
 const fontsOnly = process.argv.includes("--fonts-only");
@@ -41,9 +41,19 @@ try {
   warn(`Remotion chưa tải được trình duyệt: ${(e as Error).message} (đặt CVS_REMOTION_BROWSER trong .env nếu cần)`);
 }
 
-console.log("\n[4] CIT Voice Studio");
-const st = await new CitClient().status();
-st.ok ? ok(`Kết nối được (${st.voices} giọng)`) : warn("Chưa kết nối được – hãy mở CIT Voice Studio trước khi làm giọng (không bắt buộc lúc cài).");
+console.log("\n[4] CIT Voice Studio (thành phần bắt buộc, cài kèm ứng dụng)");
+if ((await new CitClient().status()).ok) ok("Đang chạy sẵn trên máy");
+else if (findCitExecutable()) ok(`Đã cài: ${findCitExecutable()}`);
+else {
+  try {
+    let last = -10;
+    const exe = await installCit((p, m) => { if (p - last >= 10 || p === 100) { last = p; console.log(`    ${p}% ${m}`); } });
+    ok(`Đã cài vào ${exe}`);
+  } catch (e) {
+    warn(`Không tự cài được CIT Voice Studio: ${(e as Error).message}. Tải tay tại https://github.com/Cuongyd196/cit-voice-studio/releases rồi chạy lại.`);
+  }
+}
+console.log("    Dùng CIT Voice Studio là đồng ý Điều khoản sử dụng: https://github.com/Cuongyd196/cit-voice-studio/blob/main/DIEU-KHOAN.md");
 console.log(process.env.ANTHROPIC_API_KEY ? "  ✓ Có ANTHROPIC_API_KEY" : "  ⚠ Chưa có ANTHROPIC_API_KEY trong .env – thiết kế cảnh dùng chế độ tự động, không viết kịch bản bằng AI.");
 
 console.log("\n[5] Dựng giao diện");

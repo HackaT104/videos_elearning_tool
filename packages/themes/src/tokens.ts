@@ -1,6 +1,6 @@
 // Token theme dùng chung (mục 6.3). Template chỉ dùng token → đổi phong cách không cần sửa cảnh.
 
-export type ThemeId = "giay-ky-thuat" | "toi-dien-anh" | "phang-tuoi-sang" | "bien-tap-tap-chi" | "bang-trang";
+export type ThemeId = "giay-ky-thuat" | "toi-dien-anh" | "phang-tuoi-sang" | "bien-tap-tap-chi" | "bang-trang" | "doanh-nghiep-xanh" | "ban-thiet-ke" | "toi-gian-thuy-si" | "rung-dem" | "pastel-hoc-duong";
 
 export type FontRef = { family: string; pkg: string; weight: number };
 
@@ -36,7 +36,7 @@ export type Theme = {
   /** Kiểu thẻ. */
   card: "outline" | "glow" | "solid-shadow" | "rule" | "sketch";
   /** Kiểu nền. */
-  ground: "grid" | "radial" | "cream" | "paper" | "whiteboard";
+  ground: "grid" | "radial" | "cream" | "paper" | "whiteboard" | "plain" | "blueprint" | "forest" | "pastel";
   motion: {
     enterEase: string;
     enterDur: number;
@@ -166,6 +166,121 @@ export const THEMES: Record<ThemeId, Theme> = {
     card: "sketch",
     ground: "whiteboard",
     motion: { enterEase: "power3.out", enterDur: 0.7, moveEase: "power2.inOut", moveDur: 0.9, slowEnterEase: "power2.out", slowEnterDur: 1.1, rise: 20 },
+    kickerUpper: false,
+  },
+  "doanh-nghiep-xanh": {
+    id: "doanh-nghiep-xanh",
+    name: "Doanh nghiệp xanh",
+    description: "Nền trắng sạch, dải màu xanh thương hiệu, thẻ bo nhẹ có bóng mềm. Trang trọng, hợp đào tạo nội bộ.",
+    dark: false,
+    colors: {
+      bg: "#FFFFFF", bg2: "#EEF6F2", bg3: "#FFFFFF", grid: "#E3ECE8",
+      ink: "#12324A", inkSoft: "#53687A",
+      accent: "#008A5E", alt: "#0B5FA5", money: "#B7791F", warn: "#D9622B",
+      card: "#FFFFFF", cardBorder: "#D5E2DC", line: "#12324A", highlight: "#DDF3EA",
+    },
+    fonts: {
+      display: { family: "Be Vietnam Pro", pkg: "be-vietnam-pro", weight: 700 },
+      body: { family: "Be Vietnam Pro", pkg: "be-vietnam-pro", weight: 400 },
+      bodyBold: { family: "Be Vietnam Pro", pkg: "be-vietnam-pro", weight: 700 },
+    },
+    stroke: 2,
+    radius: 16,
+    card: "outline",
+    ground: "plain",
+    motion: { enterEase: "power4.out", enterDur: 0.7, moveEase: "power2.inOut", moveDur: 0.9, slowEnterEase: "power2.out", slowEnterDur: 1.1, rise: 24 },
+    kickerUpper: true,
+  },
+  "ban-thiet-ke": {
+    id: "ban-thiet-ke",
+    name: "Bản thiết kế",
+    description: "Nền xanh bản vẽ kỹ thuật, lưới trắng mờ, nét mảnh màu trắng – vàng. Hợp quy trình, sơ đồ.",
+    dark: true,
+    colors: {
+      bg: "#0E3B6E", bg2: "#0B3260", bg3: "#082850", grid: "rgba(255,255,255,0.10)",
+      ink: "#F2F7FF", inkSoft: "#B8CCE6",
+      accent: "#FFD166", alt: "#8FD3FF", money: "#FFD166", warn: "#FF8A65",
+      card: "rgba(8,40,80,0.55)", cardBorder: "rgba(242,247,255,0.55)", line: "#F2F7FF", highlight: "rgba(255,209,102,0.18)",
+    },
+    fonts: {
+      display: { family: "Montserrat", pkg: "montserrat", weight: 700 },
+      body: { family: "Inter", pkg: "inter", weight: 400 },
+      bodyBold: { family: "Inter", pkg: "inter", weight: 600 },
+    },
+    stroke: 2,
+    radius: 4,
+    card: "outline",
+    ground: "blueprint",
+    motion: { enterEase: "expo.out", enterDur: 0.7, moveEase: "power2.inOut", moveDur: 0.9, slowEnterEase: "power2.out", slowEnterDur: 1.1, rise: 20 },
+    kickerUpper: true,
+  },
+  "toi-gian-thuy-si": {
+    id: "toi-gian-thuy-si",
+    name: "Tối giản Thụy Sĩ",
+    description: "Trắng – đen, chữ rất lớn, một màu đỏ nhấn, kẻ đường đậm. Nghiêm túc, dễ đọc.",
+    dark: false,
+    colors: {
+      bg: "#FAFAFA", bg2: "#F0F0F0", bg3: "#FFFFFF", grid: "#E6E6E6",
+      ink: "#111111", inkSoft: "#555555",
+      accent: "#E30613", alt: "#111111", money: "#111111", warn: "#E30613",
+      card: "#FAFAFA", cardBorder: "#111111", line: "#111111", highlight: "rgba(227,6,19,0.10)",
+    },
+    fonts: {
+      display: { family: "Inter", pkg: "inter", weight: 800 },
+      body: { family: "Inter", pkg: "inter", weight: 400 },
+      bodyBold: { family: "Inter", pkg: "inter", weight: 600 },
+    },
+    stroke: 4,
+    radius: 0,
+    card: "rule",
+    ground: "plain",
+    motion: { enterEase: "power4.out", enterDur: 0.6, moveEase: "power2.inOut", moveDur: 0.8, slowEnterEase: "power2.out", slowEnterDur: 1.0, rise: 16 },
+    kickerUpper: true,
+  },
+  "rung-dem": {
+    id: "rung-dem",
+    name: "Rừng đêm",
+    description: "Nền xanh rừng sâu, chữ kem ấm, nhấn xanh lá non và vàng nắng. Hợp chủ đề môi trường, khí hậu.",
+    dark: true,
+    colors: {
+      bg: "#163A2C", bg2: "#0F2B20", bg3: "#0A1F17", grid: "#1E4A39",
+      ink: "#F4EFE1", inkSoft: "#BFC9B8",
+      accent: "#9BE15D", alt: "#7CC6D6", money: "#F2C14E", warn: "#F2795C",
+      card: "#123326", cardBorder: "#2C5E49", line: "#F4EFE1", highlight: "rgba(155,225,93,0.16)",
+    },
+    fonts: {
+      display: { family: "Lora", pkg: "lora", weight: 700 },
+      body: { family: "Inter", pkg: "inter", weight: 400 },
+      bodyBold: { family: "Inter", pkg: "inter", weight: 600 },
+    },
+    stroke: 3,
+    radius: 18,
+    card: "glow",
+    ground: "forest",
+    motion: { enterEase: "power4.out", enterDur: 0.8, moveEase: "power2.inOut", moveDur: 1.0, slowEnterEase: "sine.inOut", slowEnterDur: 1.2, rise: 24 },
+    kickerUpper: true,
+  },
+  "pastel-hoc-duong": {
+    id: "pastel-hoc-duong",
+    name: "Pastel học đường",
+    description: "Màu pastel tím – bạc hà nhẹ nhàng, khối bo tròn lớn, chữ tròn thân thiện. Hợp người học mới.",
+    dark: false,
+    colors: {
+      bg: "#F6F2FF", bg2: "#E9E1FF", bg3: "#FFFFFF", grid: "#ECE6FA",
+      ink: "#2E2A4F", inkSoft: "#6A6590",
+      accent: "#6C5CE7", alt: "#16A39A", money: "#E6A23C", warn: "#E86A6A",
+      card: "#FFFFFF", cardBorder: "#DCD3FA", line: "#2E2A4F", highlight: "#D9F5EF",
+    },
+    fonts: {
+      display: { family: "Nunito", pkg: "nunito", weight: 800 },
+      body: { family: "Nunito", pkg: "nunito", weight: 600 },
+      bodyBold: { family: "Nunito", pkg: "nunito", weight: 800 },
+    },
+    stroke: 3,
+    radius: 32,
+    card: "outline",
+    ground: "pastel",
+    motion: { enterEase: "back.out(1.3)", enterDur: 0.7, moveEase: "power2.inOut", moveDur: 0.8, slowEnterEase: "power2.out", slowEnterDur: 1.0, rise: 30 },
     kickerUpper: false,
   },
 };

@@ -2,6 +2,9 @@
 // Mặc định claude-opus-5-5, thinking adaptive, streaming; bật fallbacks phía máy chủ khi bị từ chối (refusal).
 
 import Anthropic from "@anthropic-ai/sdk";
+import { readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 export const DEFAULT_MODEL = process.env.CVS_CLAUDE_MODEL || "claude-opus-5-5";
 
@@ -11,8 +14,23 @@ export function claude(): Anthropic {
   return client;
 }
 
+/** Gọi khi đổi cách đăng nhập (khoá mới, đăng nhập/đăng xuất tài khoản) để tạo lại client. */
+export function resetClaudeClient() {
+  client = null;
+}
+
+function hasProfile(): boolean {
+  const dir = process.env.ANTHROPIC_CONFIG_DIR ?? (process.platform === "win32" ? join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Anthropic") : join(homedir(), ".config", "anthropic"));
+  try {
+    return readdirSync(join(dir, "credentials")).some((f) => f.endsWith(".json"));
+  } catch {
+    return false;
+  }
+}
+
+/** Có thông tin đăng nhập Claude: khoá API, mã truy cập, hoặc hồ sơ đăng nhập tài khoản Anthropic (ant auth login). */
 export function aiAvailable(): boolean {
-  return !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+  return !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || hasProfile());
 }
 
 export class AiError extends Error {}

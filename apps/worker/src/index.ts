@@ -5,7 +5,8 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { claimNextJob, getDb, getJob, getProject, paths, requeueStale, STORAGE, updateJob, type Job } from "@cvs/db";
 import { startApi } from "./api";
-import { aiWriteScript, JOB_STEPS, makeCustomScene, reviseWithNote, runSteps, Stopped, STEP_LABELS, stylePreview, voiceSamples, type Ctx, type StepName } from "@cvs/studio";
+import { ensureCitRunning, startCitWatchdog, stopCit } from "@cvs/tts";
+import { assertStyleChosen, aiWriteScript, loadSavedClaudeKey, runAgent, JOB_STEPS, makeCustomScene, reviseWithNote, runSteps, Stopped, STEP_LABELS, stylePreview, voiceSamples, type Ctx, type StepName } from "@cvs/studio";
 
 const MAX = Number(process.env.CVS_WORKER_CONCURRENCY ?? 4);
 const MAX_RENDER = Number(process.env.CVS_RENDER_CONCURRENCY ?? 1);
@@ -38,7 +39,7 @@ async function run(job: Job) {
   }
   const lf = logFile(job);
   const log = (s: string) => appendFileSync(lf, s);
-  const steps = JOB_STEPS[job.kind] ?? [];
+  const steps = job.kind === "agent" ? (["normalize", "voice", "design", "qa", "render"] as StepName[]) : (JOB_STEPS[job.kind] ?? []);
   const ctx: Ctx = {
     projectId: job.project_id,
     key: job.video_key ?? "",
@@ -64,11 +65,19 @@ async function run(job: Job) {
       case "render":
       case "design": {
         const before = steps.filter((s) => s !== "render");
+        if (steps.includes("render")) assertStyleChosen(ctx, job.payload ?? {});
         await runSteps(ctx, before, job.payload ?? {});
         if (steps.includes("render")) {
           updateJob(job.id, { message: "Render – chờ lượt" });
-          await withRenderSlot(() => runSteps(ctx, ["render"]));
+          await withRenderSlot(() => runSteps(ctx, ["render"], job.payload ?? {}));
         }
+        break;
+      }
+      case "agent": {
+        assertStyleChosen(ctx, job.payload ?? {});
+        await runAgent(ctx, job.payload ?? {});
+        updateJob(job.id, { message: "Render – chờ lượt" });
+        await withRenderSlot(() => runSteps(ctx, ["render"], { ...(job.payload ?? {}), skipStyle: true }));
         break;
       }
       case "revise":
@@ -100,6 +109,7 @@ async function run(job: Job) {
 
 async function loop() {
   getDb();
+  loadSavedClaudeKey();
   requeueStale();
   console.log(`Worker sẵn sàng · ${MAX} job song song · render ${MAX_RENDER} · lưu trữ: ${STORAGE}`);
   for (;;) {
@@ -119,4 +129,12 @@ async function loop() {
 
 void paths;
 if (process.env.CVS_NO_API !== "1") startApi();
+// CIT Voice Studio là thành phần bắt buộc: tự cài (nếu thiếu), tự khởi động và theo dõi.
+if (process.env.CVS_TTS_MOCK !== "1" && process.env.CVS_CIT_MANAGE !== "0") {
+  ensureCitRunning({ autoInstall: process.env.CVS_CIT_AUTO_INSTALL !== "0" })
+    .then((ok) => console.log(ok ? "CIT Voice Studio: đang chạy" : "CIT Voice Studio: chưa chạy được – xem trang Giọng đọc"))
+    .catch((e) => console.log(`CIT Voice Studio: ${e.message}`));
+  startCitWatchdog();
+  for (const sig of ["SIGINT", "SIGTERM", "exit"] as const) process.on(sig, () => { stopCit(); if (sig !== "exit") process.exit(0); });
+}
 loop();

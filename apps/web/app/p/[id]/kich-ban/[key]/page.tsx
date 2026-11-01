@@ -26,7 +26,7 @@ export default function KichBan() {
   const renorm = () => a.run(async () => { if (dirty) await api(`/projects/${pid}/videos/${encodeURIComponent(key)}`, { method: "PUT", json: v }); await api(`/projects/${pid}/videos/${encodeURIComponent(key)}/renormalize`, { method: "POST" }); await row.reload(); }, "Đã chuẩn hóa lại cách đọc (giữ các câu đã sửa tay)");
   return (
     <div>
-      <PageHead step={3} title={`Kịch bản · ${v.title}`}>
+      <PageHead step={4} title={`Kịch bản · ${v.title}`}>
         <button className="btn" onClick={renorm} disabled={a.busy}>Chuẩn hóa lại cách đọc</button>
         <button className="btn btn-primary" onClick={save} disabled={a.busy || !dirty}>{dirty ? "Lưu thay đổi" : "Đã lưu"}</button>
       </PageHead>

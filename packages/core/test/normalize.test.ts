@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkTts, createNormalizer, normalizeVi, readInteger } from "../src";
+import { checkTts, createNormalizer, findForeignWords, normalizeVi, readInteger } from "../src";
 
 const n = (s: string) => normalizeVi(s);
 
@@ -133,4 +133,23 @@ describe("glossary & kiểm tra", () => {
     const r = createNormalizer()("Xin chào các bạn.");
     expect(r.changed).toBe(false);
   });
+});
+
+describe("phát hiện từ tiếng Anh", () => {
+  it.each([
+    ["Kịch bản đường cơ sở baseline của dự án", ["baseline"]],
+    ["Bù trừ offset và registry", ["offset", "registry"]],
+    ["Doanh nghiệp tham gia thị trường", []],
+    ["Tín chỉ các bon trong năm", []],
+    ["Gửi email và xem video", []],
+    ["Ngân hàng Standard Chartered", ["Standard", "Chartered"]],
+  ])("%s", (text, want) => expect(findForeignWords(text)).toEqual(want));
+  it("đưa vào cảnh báo", () => expect(checkTts("Dùng baseline").join()).toContain("baseline"));
+});
+
+describe("thẻ CIT được giữ nguyên", () => {
+  it("không chuẩn hóa bên trong [nghỉ 2s], [cười]", () => {
+    expect(normalizeVi("Năm 2027 [nghỉ 2s] bắt đầu [cười] nhé")).toBe("Năm hai nghìn không trăm hai mươi bảy [nghỉ 2s] bắt đầu [cười] nhé");
+  });
+  it("không cảnh báo chữ số trong thẻ", () => expect(checkTts("Xin chào [nghỉ 500ms] các bạn")).toEqual([]));
 });

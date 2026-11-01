@@ -26,12 +26,25 @@ export type VoiceManifest = { version: number; scenes: Record<string, VoiceManif
 /** hash = sha1(provider, voice, speed, text tts) – chỉ tạo lại cảnh có hash thay đổi. */
 export function sceneVoiceHash(voice: VoiceConfig, scene: Pick<Scene, "sentences">, gap = 0): string {
   const h = createHash("sha1");
-  h.update([voice.provider, voice.voiceId, voice.speed.toFixed(3), gap.toFixed(3), ...scene.sentences.map((s) => s.tts)].join("␞"));
+  h.update([voice.provider, voice.voiceId, voice.speed.toFixed(3), gap.toFixed(3), ...(voiceExtras(voice) ? [voiceExtras(voice)] : []), ...scene.sentences.map((s) => s.tts)].join("␞"));
   return h.digest("hex").slice(0, 16);
 }
 
+/** Phần tuỳ chọn CIT đưa vào hash (để trống khi dùng mặc định → hash cũ không đổi). */
+export function voiceExtras(v: VoiceConfig): string {
+  const parts: string[] = [];
+  if (v.temperature !== undefined) parts.push(`t${v.temperature}`);
+  if (v.seed !== undefined && v.seed !== null) parts.push(`s${v.seed}`);
+  if (v.useDict === false) parts.push("nodict");
+  return parts.join(",");
+}
+
+/** Thẻ điều khiển cách đọc của CIT: [nghỉ 2s], [cười], [thở dài], [hắng giọng]… */
+export const TTS_TAG_RE = /\[[^\[\]\n]{1,24}\]/g;
+export const stripTtsTags = (s: string) => s.replace(TTS_TAG_RE, " ").replace(/\s+/g, " ").trim();
+
 export function countSyllables(s: string): number {
-  return s.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+  return stripTtsTags(s).split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 }
 
 /** Ước tính mốc câu khi chưa có giọng: ~3,1 tiếng/giây × speed × hệ số cấp độ. */

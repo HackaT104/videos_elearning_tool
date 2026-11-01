@@ -259,6 +259,9 @@ importers:
 
   packages/studio:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^1.3.0
+        version: 1.3.0(zod@4.6.7)
       '@cvs/ai':
         specifier: workspace:*
         version: link:../ai

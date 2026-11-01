@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { readJson, sceneVoiceHash, writeFileAtomic, writeJsonAtomic, type Cue, type Scene, type Video, type VoiceConfig, type VoiceManifest, type VoiceManifestScene } from "@cvs/core";
+import { readJson, sceneVoiceHash, stripTtsTags, voiceExtras, writeFileAtomic, writeJsonAtomic, type Cue, type Scene, type Video, type VoiceConfig, type VoiceManifest, type VoiceManifestScene } from "@cvs/core";
 import { alignSentences } from "./align";
 import { CitClient } from "./cit";
 import { edgeGenerate } from "./edge";
@@ -33,14 +33,22 @@ export function loadManifest(voDir: string): VoiceManifest {
 }
 
 function rawHash(voice: VoiceConfig, text: string) {
-  return createHash("sha1").update([voice.provider, voice.voiceId, voice.speed.toFixed(3), text].join("␞")).digest("hex").slice(0, 16);
+  return createHash("sha1").update([voice.provider, voice.voiceId, voice.speed.toFixed(3), ...(voiceExtras(voice) ? [voiceExtras(voice)] : []), text].join("␞")).digest("hex").slice(0, 16);
 }
 
 export async function generateRaw(text: string, voice: VoiceConfig, opts: Pick<SynthOptions, "cit" | "generator">) {
   if (opts.generator) return opts.generator(text, voice);
-  if (voice.provider === "edge") return edgeGenerate(text, voice.voiceId, voice.speed);
+  if (voice.provider === "edge") return edgeGenerate(stripTtsTags(text), voice.voiceId, voice.speed);
   const cit = opts.cit ?? new CitClient();
-  return cit.generate({ text, voice_id: voice.voiceId, speed: voice.speed, format: "wav" });
+  return cit.generate({
+    text,
+    voice_id: voice.voiceId,
+    speed: voice.speed,
+    format: "wav",
+    ...(voice.temperature !== undefined ? { temperature: voice.temperature } : {}),
+    ...(voice.seed !== undefined && voice.seed !== null ? { seed: voice.seed } : {}),
+    use_pronunciation_dict: voice.useDict ?? true,
+  });
 }
 
 /** Xử lý một cảnh (giả định đã có file thô). Trả về mục manifest. */

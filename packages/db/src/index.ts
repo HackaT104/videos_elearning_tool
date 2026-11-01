@@ -35,6 +35,10 @@ export type ProjectSettings = {
   /** Soát bằng hình (vision) trong QA. */
   aiVision: boolean;
   hfRenderer: "auto" | "cli" | "fallback";
+  /** Người dùng đã chọn phong cách từ 10 mẫu (bắt buộc trước khi render). */
+  styleConfirmed?: boolean;
+  /** Tuỳ chọn CIT mặc định cho dự án. */
+  cit?: { temperature?: number; seed?: number | null; useDict?: boolean };
 };
 
 export type Project = { id: string; name: string; course: string; levels: string[]; settings: ProjectSettings; created_at: string };
@@ -54,7 +58,7 @@ export type VideoRow = {
   qa: unknown | null;
   updated_at: string;
 };
-export type JobKind = "produce" | "voice" | "visual" | "render" | "design" | "ai-script" | "theme-preview" | "voice-sample" | "revise";
+export type JobKind = "agent" | "produce" | "voice" | "visual" | "render" | "design" | "ai-script" | "theme-preview" | "voice-sample" | "revise";
 export type JobStatus = "queued" | "running" | "done" | "failed" | "paused" | "canceled";
 export type Job = {
   id: number;
@@ -93,6 +97,10 @@ export function getDb(): Database.Database {
     CREATE TABLE IF NOT EXISTS glossary (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, term TEXT NOT NULL, reading TEXT NOT NULL, case_sensitive INTEGER NOT NULL DEFAULT 0, note TEXT);
     CREATE TABLE IF NOT EXISTS voices (provider TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, gender TEXT, PRIMARY KEY (provider, id));
   `);
+  const vcols = (db.prepare("PRAGMA table_info(voices)").all() as { name: string }[]).map((c) => c.name);
+  if (!vcols.includes("region")) db.exec("ALTER TABLE voices ADD COLUMN region TEXT");
+  if (!vcols.includes("description")) db.exec("ALTER TABLE voices ADD COLUMN description TEXT");
+  if (!vcols.includes("cloned")) db.exec("ALTER TABLE voices ADD COLUMN cloned INTEGER");
   return db;
 }
 
@@ -238,13 +246,15 @@ export function deleteGlossary(id: number) {
 }
 
 // ---------- voices ----------
-export function cacheVoices(provider: string, voices: { id: string; name: string; gender?: string }[]) {
+export type VoiceRow = { provider: string; id: string; name: string; gender: string | null; region: string | null; description: string | null; cloned: number | null };
+export function cacheVoices(provider: string, voices: { id: string; name: string; gender?: string; region?: string; description?: string; cloned?: boolean }[]) {
   const d = getDb();
   d.transaction(() => {
     d.prepare("DELETE FROM voices WHERE provider=?").run(provider);
-    for (const v of voices) d.prepare("INSERT OR REPLACE INTO voices VALUES (?,?,?,?)").run(provider, v.id, v.name, v.gender ?? null);
+    for (const v of voices)
+      d.prepare("INSERT OR REPLACE INTO voices (provider, id, name, gender, region, description, cloned) VALUES (?,?,?,?,?,?,?)").run(provider, v.id, v.name, v.gender ?? null, v.region ?? null, v.description ?? null, v.cloned ? 1 : 0);
   })();
 }
 export function listVoices(provider?: string) {
-  return (provider ? getDb().prepare("SELECT * FROM voices WHERE provider=?").all(provider) : getDb().prepare("SELECT * FROM voices").all()) as { provider: string; id: string; name: string; gender: string | null }[];
+  return (provider ? getDb().prepare("SELECT * FROM voices WHERE provider=?").all(provider) : getDb().prepare("SELECT * FROM voices").all()) as VoiceRow[];
 }

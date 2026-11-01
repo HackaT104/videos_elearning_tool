@@ -18,10 +18,15 @@ export default function Doc() {
   const warnCount = data?.filter((r) => r.warnings.length).length ?? 0;
   return (
     <div>
-      <PageHead step={4} title="Soát cách đọc">
+      <PageHead step={3} title="Chuẩn hoá cách đọc">
         <button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api(`/projects/${pid}/normalize`, { method: "POST", json: {} }); await reload(); }, "Đã chuẩn hóa lại toàn bộ (giữ câu đã sửa tay)")}>Chuẩn hóa lại tất cả</button>
       </PageHead>
       <Msg msg={a.msg} />
+      <div className="mb-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+        Bước bắt buộc trước khi tạo giọng: ứng dụng đổi ký hiệu, số, ngày tháng, viết tắt và thuật ngữ thành cách đọc tiếng Việt
+        (ví dụ CO₂ → "xê ô hai", 01/01/2027 → "ngày một tháng một năm…"). Khi sản xuất, câu nào còn <b>chữ số, chữ viết tắt hoặc từ tiếng Anh</b> chưa
+        xử lý sẽ <b>chặn bước tạo giọng</b>. Sửa trực tiếp ở cột bên phải (câu sửa tay coi như đã duyệt) hoặc thêm vào bảng thuật ngữ bên dưới.
+      </div>
       <div className="mb-3 flex items-center gap-2 text-sm">
         {(["changed", "warn", "all"] as const).map((f) => (
           <button key={f} className={`btn ${filter === f ? "btn-primary" : ""}`} onClick={() => setFilter(f)}>{f === "changed" ? "Câu bị đổi" : f === "warn" ? `Cảnh báo (${warnCount})` : "Tất cả"}</button>
@@ -63,6 +68,11 @@ function ReadRow({ pid, r, onSaved }: { pid: string; r: Row; onSaved: () => void
       <td className="text-sm">{r.text}<div className="mt-1 flex flex-wrap gap-1">{r.rules.map((x) => <Badge key={x}>{x}</Badge>)}</div></td>
       <td>
         <textarea className="input text-sm" rows={3} value={tts} onChange={(e) => setTts(e.target.value)} />
+        <div className="mt-1 flex flex-wrap gap-1">
+          {["[nghỉ 500ms]", "[nghỉ 1s]", "[cười]", "[thở dài]", "[hắng giọng]"].map((t) => (
+            <button key={t} type="button" className="rounded border border-line px-1.5 py-0.5 text-[11px] text-soft hover:bg-slate-50" title="Thẻ điều khiển cách đọc của CIT Voice Studio" onClick={() => setTts((x) => `${x.trimEnd()} ${t}`)}>+ {t}</button>
+          ))}
+        </div>
         {r.warnings.map((w) => <div key={w} className="assume mt-1">⚠ {w}</div>)}
         {r.locked && <Badge tone="blue">sửa tay</Badge>}
         {audio && <audio className="mt-1 h-8 w-full" src={audio} controls autoPlay />}

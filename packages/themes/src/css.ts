@@ -136,5 +136,15 @@ export function groundHtml(theme: Theme): string {
       return `<div id="ground" data-layout-ignore style="${base}background:${c.bg};"><svg width="1920" height="1080" style="position:absolute;inset:0;opacity:.35"><filter id="cvs-paper"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3"/><feColorMatrix values="0 0 0 0 0.4  0 0 0 0 0.36  0 0 0 0 0.3  0 0 0 0.09 0"/></filter><rect width="1920" height="1080" filter="url(#cvs-paper)"/></svg><div style="position:absolute;left:96px;right:96px;top:40px;height:0;border-top:1.5px solid ${c.ink};opacity:.5"></div></div>`;
     case "whiteboard":
       return `<div id="ground" data-layout-ignore style="${base}background:radial-gradient(ellipse 90% 85% at 50% 45%, ${c.bg} 70%, ${c.bg2} 100%);"></div>`;
+    case "plain":
+      return theme.id === "toi-gian-thuy-si"
+        ? `<div id="ground" data-layout-ignore style="${base}background:${c.bg};"><div style="position:absolute;left:0;top:0;width:24px;height:1080px;background:${c.accent};"></div></div>`
+        : `<div id="ground" data-layout-ignore style="${base}background:${c.bg};"><div style="position:absolute;left:0;right:0;bottom:0;height:14px;background:linear-gradient(90deg, ${c.accent}, ${c.alt});"></div><div style="position:absolute;right:-180px;top:-220px;width:620px;height:620px;border-radius:50%;background:${c.bg2};"></div></div>`;
+    case "blueprint":
+      return `<div id="ground" data-layout-ignore style="${base}background-color:${c.bg};background-image:linear-gradient(${c.grid} 1px,transparent 1px),linear-gradient(90deg,${c.grid} 1px,transparent 1px),linear-gradient(rgba(255,255,255,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.05) 1px,transparent 1px);background-size:120px 120px,120px 120px,24px 24px,24px 24px;"><div style="position:absolute;inset:28px;border:2px solid rgba(242,247,255,0.35);"></div></div>`;
+    case "forest":
+      return `<div id="ground" data-layout-ignore style="${base}background:radial-gradient(ellipse 85% 75% at 30% 30%, ${c.bg} 0%, ${c.bg2} 60%, ${c.bg3} 100%);overflow:hidden;"><svg width="1920" height="1080" style="position:absolute;inset:0;opacity:.35"><path d="M0 1080 L0 900 L120 760 L240 900 L360 720 L480 880 L600 780 L720 920 L720 1080 Z" fill="${c.bg3}"/><path d="M1200 1080 L1260 820 L1380 700 L1500 860 L1620 740 L1740 880 L1920 780 L1920 1080 Z" fill="${c.bg3}"/></svg></div>`;
+    case "pastel":
+      return `<div id="ground" data-layout-ignore style="${base}background:${c.bg};overflow:hidden;"><div style="position:absolute;width:700px;height:700px;border-radius:50%;background:${c.bg2};left:-260px;top:-300px;"></div><div style="position:absolute;width:520px;height:520px;border-radius:50%;background:${c.highlight};right:-160px;bottom:-220px;"></div></div>`;
   }
 }

@@ -1,6 +1,6 @@
 // Mô hình dữ liệu chuẩn (mục 3.5). JSON này là nguồn sự thật cho cả hai bộ dựng.
 
-export type StyleId = "giay-ky-thuat" | "toi-dien-anh" | "phang-tuoi-sang" | "bien-tap-tap-chi" | "bang-trang";
+export type StyleId = "giay-ky-thuat" | "toi-dien-anh" | "phang-tuoi-sang" | "bien-tap-tap-chi" | "bang-trang" | "doanh-nghiep-xanh" | "ban-thiet-ke" | "toi-gian-thuy-si" | "rung-dem" | "pastel-hoc-duong";
 export type EngineId = "hyperframes" | "remotion";
 export type VoiceProvider = "cit" | "edge";
 export type LevelTier = "co-ban" | "trung-cap" | "chuyen-sau";
@@ -42,7 +42,17 @@ export type Scene = {
   notes?: string[];
 };
 
-export type VoiceConfig = { provider: VoiceProvider; voiceId: string; speed: number };
+export type VoiceConfig = {
+  provider: VoiceProvider;
+  voiceId: string;
+  speed: number;
+  /** CIT: độ ngẫu nhiên VieNeu v3 Turbo (0,1–1,5; mặc định 0,8). */
+  temperature?: number;
+  /** CIT: cố định ngẫu nhiên để tạo lại ra đúng giọng như cũ. */
+  seed?: number | null;
+  /** CIT: áp dụng từ điển phát âm của CIT Voice Studio (ngoài bảng thuật ngữ của ứng dụng). */
+  useDict?: boolean;
+};
 export type Pace = { lead: number; gap: number; tail: number };
 
 export type Video = {

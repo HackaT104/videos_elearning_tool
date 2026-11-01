@@ -1,12 +1,13 @@
 // Xuất, dọn dẹp, nghe thử giọng, so sánh phong cách, viết kịch bản bằng AI, sửa cảnh theo ghi chú.
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { computeTiming, createNormalizer, levelFolder, makeSentences, type OutlineDoc, type StyleId, type Video, type VoiceConfig } from "@cvs/core";
 import { reviseScene, writeOutline, writeScript } from "@cvs/ai";
 import { addFile, getProject, getVideo, glossaryFor, listVideos, paths, setVideoFlags, upsertVideo, type ProjectSettings } from "@cvs/db";
-import { qaTimes } from "@cvs/engine";
+import { effectiveDesign, qaTimes } from "@cvs/engine";
 import { hfBuild, hfPreview, launchBrowser } from "@cvs/engine-hf";
 import { THEME_IDS, THEMES } from "@cvs/themes";
 import { CitClient, mockGenerate, probe, synthesizeSample } from "@cvs/tts";
@@ -111,7 +112,7 @@ export async function voiceSamples(text: string, voices: VoiceConfig[]): Promise
   const tts = createNormalizer()(text).tts;
   const out: { voice: VoiceConfig; file: string; error?: string }[] = [];
   for (const v of voices) {
-    const file = join(dir, `${v.provider}_${v.voiceId.normalize("NFD").replace(/[^\w]/g, "")}_${v.speed}_${Buffer.from(tts).toString("base64url").slice(0, 16)}.mp3`);
+    const file = join(dir, `${v.provider}_${createHash("sha1").update(JSON.stringify([v, tts])).digest("hex").slice(0, 16)}.mp3`);
     try {
       if (!existsSync(file)) await synthesizeSample(tts, v, file, { cit, generator: process.env.CVS_TTS_MOCK === "1" ? mockGenerate : undefined });
       out.push({ voice: v, file });
@@ -155,7 +156,13 @@ export async function stylePreview(projectId: string, key: string | null, sceneI
       ],
     };
   }
-  const scene = video.scenes.find((s) => s.id === sceneId) ?? video.scenes.find((s) => s.design && s.design.template !== "draft") ?? video.scenes[0];
+  // Cảnh đại diện: ưu tiên cảnh có hình phong phú (so sánh, quy trình, số liệu…) để thấy rõ khác biệt giữa các phong cách.
+  const plain = ["title-card", "draft", "quote-banner"];
+  const scene =
+    video.scenes.find((s) => s.id === sceneId) ??
+    video.scenes.find((s) => !plain.includes(effectiveDesign(video, s).template)) ??
+    video.scenes.find((s) => effectiveDesign(video, s).template !== "draft") ??
+    video.scenes[0];
   video.scenes = [scene];
   const dir = join(paths.project(projectId), "styles", key ?? "mau");
   const browser = await launchBrowser();
@@ -220,3 +227,15 @@ export async function reviseWithNote(ctx: Ctx, sceneId: string, note: string) {
 
 export { computeTiming, basename, stepBuild };
 export type { ProjectSettings };
+
+/** Ảnh mẫu phong cách đã dựng gần nhất của dự án (để màn hình chọn phong cách hiện ngay, không phải dựng lại). */
+export function listStylePreviews(projectId: string): { key: string; styles: { style: StyleId; file: string }[] } | null {
+  const dir = join(paths.project(projectId), "styles");
+  if (!existsSync(dir)) return null;
+  const sets = readdirSync(dir)
+    .map((k) => ({ k, files: THEME_IDS.map((s) => ({ style: s, file: join(dir, k, `${s}.png`) })).filter((x) => existsSync(x.file)) }))
+    .filter((x) => x.files.length > 0)
+    .map((x) => ({ ...x, t: Math.max(...x.files.map((f) => statSync(f.file).mtimeMs)) }))
+    .sort((a, b) => b.t - a.t);
+  return sets[0] ? { key: sets[0].k, styles: sets[0].files } : null;
+}
