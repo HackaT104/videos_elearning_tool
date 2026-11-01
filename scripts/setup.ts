@@ -23,7 +23,8 @@ for (const t of Object.values(THEMES)) {
 }
 if (fontsOnly) process.exit(fontsOk ? 0 : 1);
 
-console.log("\n[2] ffmpeg / ffprobe");
+console.log("\n[2] File mẫu (fixtures) + ffmpeg / ffprobe");
+sh("npx", ["tsx", "scripts/make-fixtures.ts"]) ? ok("fixtures/*.docx, *.xlsx") : warn("Không tạo được file mẫu");
 for (const b of [FFMPEG, FFPROBE]) {
   const r = await run(b, ["-version"]).catch(() => null);
   r && r.code === 0 ? ok(r.stdout.toString().split("\n")[0]) : warn(`Không chạy được ${b}`);
