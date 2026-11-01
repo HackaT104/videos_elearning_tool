@@ -128,7 +128,7 @@ export function fontFilePath(pkg: string, file: string): string | null {
   }
 }
 
-export function fontStack(f: FontRef, generic: "sans-serif" | "serif" | "cursive" = "sans-serif"): string {
+export function fontStack(f: FontRef, generic: NonNullable<FontRef["generic"]> = "sans-serif"): string {
   return `'${f.family}', '${SYMBOL_FAMILY}', ${generic}`;
 }
 

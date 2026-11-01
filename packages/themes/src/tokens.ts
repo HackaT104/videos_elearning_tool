@@ -4,7 +4,7 @@ import { getFontPair } from "./fontpairs";
 
 export type ThemeId = "giay-ky-thuat" | "toi-dien-anh" | "phang-tuoi-sang" | "bien-tap-tap-chi" | "bang-trang" | "doanh-nghiep-xanh" | "ban-thiet-ke" | "toi-gian-thuy-si" | "rung-dem" | "pastel-hoc-duong";
 
-export type FontRef = { family: string; pkg: string; weight: number; /** Họ dự phòng chung; mặc định sans-serif. */ generic?: "sans-serif" | "serif" | "cursive" };
+export type FontRef = { family: string; pkg: string; weight: number; /** Họ dự phòng chung; mặc định sans-serif. */ generic?: "sans-serif" | "serif" | "cursive" | "monospace" };
 
 export type Theme = {
   id: ThemeId;
@@ -49,6 +49,8 @@ export type Theme = {
     slowEnterDur: number;
     /** Độ trượt khi vào (px). */
     rise: number;
+    /** Máy quay đẩy chậm cả cảnh: scale 1 → 1 + camera (mặc định 0,025; 0 = tắt). */
+    camera?: number;
   };
   /** Chữ hoa cho tiêu đề phụ (kicker). */
   kickerUpper: boolean;
@@ -236,7 +238,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     radius: 0,
     card: "rule",
     ground: "plain",
-    motion: { enterEase: "power4.out", enterDur: 0.6, moveEase: "power2.inOut", moveDur: 0.8, slowEnterEase: "power2.out", slowEnterDur: 1.0, rise: 16 },
+    motion: { enterEase: "power4.out", enterDur: 0.6, moveEase: "power2.inOut", moveDur: 0.8, slowEnterEase: "power2.out", slowEnterDur: 1.0, rise: 16, camera: 0 },
     kickerUpper: true,
   },
   "rung-dem": {

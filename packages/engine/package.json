@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@cvs/core": "workspace:*",
-    "@cvs/themes": "workspace:*"
+    "@cvs/themes": "workspace:*",
+    "lucide-static": "0.460.0"
   }
 }
