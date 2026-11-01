@@ -1,8 +1,10 @@
 // Token theme dùng chung (mục 6.3). Template chỉ dùng token → đổi phong cách không cần sửa cảnh.
 
+import { getFontPair } from "./fontpairs";
+
 export type ThemeId = "giay-ky-thuat" | "toi-dien-anh" | "phang-tuoi-sang" | "bien-tap-tap-chi" | "bang-trang" | "doanh-nghiep-xanh" | "ban-thiet-ke" | "toi-gian-thuy-si" | "rung-dem" | "pastel-hoc-duong";
 
-export type FontRef = { family: string; pkg: string; weight: number };
+export type FontRef = { family: string; pkg: string; weight: number; /** Họ dự phòng chung; mặc định sans-serif. */ generic?: "sans-serif" | "serif" | "cursive" };
 
 export type Theme = {
   id: ThemeId;
@@ -287,8 +289,11 @@ export const THEMES: Record<ThemeId, Theme> = {
 
 export const THEME_IDS = Object.keys(THEMES) as ThemeId[];
 
-export function getTheme(id: string): Theme {
-  return THEMES[id as ThemeId] ?? THEMES["giay-ky-thuat"];
+/** Theme theo id; nếu có `font` (mã cặp phông) thì thay phông của theme bằng cặp đó. */
+export function getTheme(id: string, font?: string | null): Theme {
+  const base = THEMES[id as ThemeId] ?? THEMES["giay-ky-thuat"];
+  const pair = getFontPair(font);
+  return pair ? { ...base, fonts: { display: pair.display, body: pair.body, bodyBold: pair.bodyBold } } : base;
 }
 
 export type Tone = "accent" | "alt" | "money" | "warn" | "neutral";

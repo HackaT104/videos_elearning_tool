@@ -40,6 +40,8 @@ export type Scene = {
   design?: SceneDesign;
   /** Ghi chú sửa của người duyệt (ngôn ngữ tự nhiên). */
   notes?: string[];
+  /** Các thiết kế trước của cảnh (mới nhất ở cuối, tối đa 5) để hoàn tác lần sửa bằng AI. */
+  history?: SceneDesign[];
 };
 
 export type VoiceConfig = {
@@ -66,6 +68,8 @@ export type Video = {
   /** Tên file gốc trong kịch bản, ví dụ "videos/MO1_U1.5_1.mp4". */
   sourceFileName?: string;
   style: StyleId;
+  /** Cặp phông chữ (mã trong @cvs/themes FONT_PAIRS); trống = phông của phong cách. */
+  font?: string;
   engine: EngineId;
   voice: VoiceConfig;
   pace: Pace;

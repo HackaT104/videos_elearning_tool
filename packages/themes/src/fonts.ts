@@ -79,7 +79,8 @@ export function themeFontRefs(theme: Theme): FontRef[] {
 }
 
 export async function fontFaces(theme: Theme): Promise<FontFaceData[]> {
-  if (memo.has(theme.id)) return memo.get(theme.id)!;
+  const key = themeFontRefs(theme).map((f) => `${f.pkg}:${f.weight}`).join("|");
+  if (memo.has(key)) return memo.get(key)!;
   const faces: FontFaceData[] = [];
   for (const f of themeFontRefs(theme)) {
     for (const { file, range } of faceFiles(f)) {
@@ -88,7 +89,7 @@ export async function fontFaces(theme: Theme): Promise<FontFaceData[]> {
   }
   faces.push({ family: SYMBOL_FAMILY, weight: 400, style: "normal", unicodeRange: SYMBOL_RANGES, format: "woff2", base64: (await symbolFont(false)).toString("base64") });
   faces.push({ family: SYMBOL_FAMILY, weight: 700, style: "normal", unicodeRange: SYMBOL_RANGES, format: "woff2", base64: (await symbolFont(true)).toString("base64") });
-  memo.set(theme.id, faces);
+  memo.set(key, faces);
   return faces;
 }
 
@@ -99,6 +100,32 @@ export async function fontFaceCss(theme: Theme): Promise<string> {
         `@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};font-display:block;src:url(data:font/${f.format};base64,${f.base64}) format('${f.format}');unicode-range:${f.unicodeRange};}`,
     )
     .join("\n");
+}
+
+/** CSS @font-face trỏ tới URL (cho trang xem trước trong trình duyệt – chỉ tải phần ký tự cần). */
+export function fontFaceUrlCss(refs: FontRef[], url: (pkg: string, file: string) => string): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const f of refs) {
+    const k = `${f.pkg}:${f.weight}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    for (const { file, range } of faceFiles(f)) {
+      out.push(`@font-face{font-family:'${f.family}';font-style:normal;font-weight:${f.weight};font-display:swap;src:url(${url(f.pkg, file.split(/[\\/]/).pop()!)}) format('woff2');unicode-range:${range};}`);
+    }
+  }
+  return out.join("\n");
+}
+
+/** Đường dẫn file phông trong gói @fontsource (để máy chủ phục vụ trang xem trước). */
+export function fontFilePath(pkg: string, file: string): string | null {
+  if (!/^[a-z0-9-]+$/.test(pkg) || !/^[a-z0-9-]+\.woff2$/.test(file)) return null;
+  try {
+    const p = join(pkgDir(pkg), "files", file);
+    return existsSync(p) ? p : null;
+  } catch {
+    return null;
+  }
 }
 
 export function fontStack(f: FontRef, generic: "sans-serif" | "serif" | "cursive" = "sans-serif"): string {

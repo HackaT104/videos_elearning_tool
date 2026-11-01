@@ -25,7 +25,7 @@ function writeIfChanged(path: string, content: string | Buffer): boolean {
 }
 
 export async function indexHtml(video: Video, timing: Timing): Promise<string> {
-  const theme = getTheme(video.style);
+  const theme = getTheme(video.style, video.font);
   const hosts = timing.scenes
     .map(
       (s) =>

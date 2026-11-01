@@ -16,7 +16,7 @@ export const REMOTION_DIR = join(HERE, "..", "remotion");
 const BUNDLE_ROOT = join(HERE, "..", ".bundle");
 
 export async function buildProps(video: Video, timing: Timing): Promise<RmtProps> {
-  const theme = getTheme(video.style);
+  const theme = getTheme(video.style, video.font);
   const fonts = (await fontFaces(theme)).map((f) => ({ family: f.family, weight: f.weight, unicodeRange: f.unicodeRange, base64: f.base64 }));
   return {
     videoKey: video.key,

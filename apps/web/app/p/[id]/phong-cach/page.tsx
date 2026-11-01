@@ -5,13 +5,14 @@ import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead } from "@/components/ui";
 
-type Theme = { id: string; name: string; description: string; dark: boolean; colors: Record<string, string> };
+type Theme = { id: string; name: string; description: string; dark: boolean; colors: Record<string, string>; fonts: { display: string; body: string; displayWeight: number } };
+type FontPair = { id: string; name: string; description: string; display: string; body: string; displayWeight: number; generic: string };
 type Styles = { previews: { key: string; styles: { style: string; file: string }[] } | null; job: { id: number; status: string; progress: number; message: string | null } | null };
 
 export default function PhongCach() {
   const { project, reload } = useProject();
   const pid = project!.id;
-  const meta = useApi<{ themes: Theme[] }>("/meta");
+  const meta = useApi<{ themes: Theme[]; fonts: FontPair[] }>("/meta");
   const vids = useApi<VideoSum[]>(`/projects/${pid}/videos`, 5000);
   const styles = useApi<Styles>(`/projects/${pid}/styles`, 3000);
   const [sample, setSample] = useState<string>("");
@@ -118,6 +119,8 @@ export default function PhongCach() {
         </div>
       )}
 
+      <FontPicker themes={meta.data?.themes} fonts={meta.data?.fonts} styleId={picked ?? s.style} current={s.font ?? "theo-phong-cach"} busy={a.busy} onPick={(font) => setProject({ font })} />
+
       <div className="card mb-4">
         <h2 className="mb-2 text-base font-semibold">Bộ dựng cho cả dự án</h2>
         <div className="flex flex-wrap gap-2">
@@ -133,12 +136,13 @@ export default function PhongCach() {
       <div className="card overflow-x-auto">
         <h2 className="mb-2 text-base font-semibold">Đổi riêng từng video</h2>
         <table className="tbl">
-          <thead><tr><th>Video</th><th>Phong cách</th><th>Bộ dựng</th><th></th></tr></thead>
+          <thead><tr><th>Video</th><th>Phong cách</th><th>Font chữ</th><th>Bộ dựng</th><th></th></tr></thead>
           <tbody>
             {vids.data?.filter((v) => v.include && !v.existing).map((v) => (
               <tr key={v.key}>
                 <td className="num text-[13px] font-medium">{v.key}</td>
                 <td><select className="input" value={v.style} onChange={(e) => setVideo(v.key, { style: e.target.value })}>{meta.data?.themes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
+                <td><select className="input" value={v.font ?? "theo-phong-cach"} onChange={(e) => setVideo(v.key, { font: e.target.value === "theo-phong-cach" ? (undefined as unknown as string) : e.target.value })}><option value="theo-phong-cach">Theo phong cách</option>{meta.data?.fonts.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></td>
                 <td><select className="input" value={v.engine} onChange={(e) => setVideo(v.key, { engine: e.target.value })}><option value="hyperframes">HyperFrames</option><option value="remotion">Remotion</option></select></td>
                 <td><button className="btn" disabled={!v.rendered || a.busy} onClick={() => rerender(v)}>Dựng lại bằng bộ kia</button></td>
               </tr>
@@ -146,6 +150,53 @@ export default function PhongCach() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+const SAMPLE_TITLE = "Thẩm định tín chỉ carbon";
+const SAMPLE_BODY = "Mỗi tấn CO₂ giảm được ghi nhận sau kỳ giám sát ngày 01/01/2027.";
+
+/** Chọn cặp phông cho video. Mỗi ô là một khung hình thu nhỏ dùng màu của phong cách đang chọn. */
+function FontPicker({ themes, fonts, styleId, current, busy, onPick }: { themes?: Theme[]; fonts?: FontPair[]; styleId: string; current: string; busy: boolean; onPick: (id: string) => void }) {
+  const th = themes?.find((t) => t.id === styleId);
+  if (!th || !fonts) return null;
+  const options: (FontPair & { isDefault?: boolean })[] = [
+    { id: "theo-phong-cach", name: "Theo phong cách", description: `Giữ phông của "${th.name}": ${th.fonts.display}${th.fonts.body !== th.fonts.display ? ` + ${th.fonts.body}` : ""}.`, display: th.fonts.display, body: th.fonts.body, displayWeight: th.fonts.displayWeight, generic: "sans-serif", isDefault: true },
+    ...fonts,
+  ];
+  const c = th.colors;
+  return (
+    <div className="card mb-4">
+      {/* CSS @font-face cho phần xem trước; trình duyệt chỉ tải phần ký tự cần */}
+      <link rel="stylesheet" href="/api/fonts.css" precedence="font-preview" />
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="text-base font-semibold">Font chữ trong video</h2>
+          <p className="text-[13px] text-soft">{options.length - 1} cặp phông tiêu đề + nội dung, đều đủ dấu tiếng Việt và nhúng sẵn khi render. Xem trước bằng màu của phong cách đang chọn.</p>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {options.map((f) => {
+          const sel = current === f.id;
+          return (
+            <button key={f.id} type="button" disabled={busy} aria-pressed={sel} onClick={() => !sel && onPick(f.id)} className={`style-card text-left ${sel ? "is-picked" : ""}`}>
+              <div className="aspect-[16/7] overflow-hidden rounded-lg px-4 py-3" style={{ background: c.bg, color: c.ink, outline: "1px solid oklch(0 0 0 / 0.08)", outlineOffset: -1 }}>
+                <div className="text-[22px] leading-tight" style={{ fontFamily: `'${f.display}', ${f.generic}`, fontWeight: f.displayWeight }}>{SAMPLE_TITLE}</div>
+                <div className="mt-1.5 h-[3px] w-10 rounded-full" style={{ background: c.accent }} />
+                <div className="mt-2 text-[13px] leading-snug" style={{ fontFamily: `'${f.body}', sans-serif`, color: c.inkSoft }}>{SAMPLE_BODY}</div>
+              </div>
+              <div className="mt-2 flex items-start justify-between gap-2 px-0.5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">{f.name}{sel && <Badge tone="green">đang dùng</Badge>}</div>
+                  <div className="text-[12px] leading-snug text-soft">{f.description}</div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-[12px] text-soft">Đổi font áp dụng cho mọi video của dự án (có thể đổi riêng từng video ở bảng cuối trang). Video đã render cần "Dựng lại hình" ở bước Sản xuất, giữ nguyên giọng.</p>
     </div>
   );
 }

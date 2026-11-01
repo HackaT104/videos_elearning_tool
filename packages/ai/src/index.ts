@@ -92,7 +92,7 @@ function catalog(): string {
 }
 
 export function seriesSpec(video: Video): string {
-  const th = getTheme(video.style);
+  const th = getTheme(video.style, video.font);
   return `SERIES_SPEC: phong cách "${th.name}" – ${th.description}. Khung 1920×1080, vùng an toàn x 96–1824, y 54–1026. Chữ ≥ 28 px (dòng nguồn 22–24 px). Mỗi khung chỉ một màu nhấn chính; màu cam/đỏ (tone "warn") chỉ cho rủi ro/chi phí; "money" cho tiền. ${th.dark ? "" : "Không glow/neon trang trí."}`;
 }
 
@@ -151,6 +151,10 @@ export type CustomSceneOptions = {
   /** 1–2 cảnh mẫu đã duyệt cùng theme để bắt chước. */
   examples: string[];
   lint: (code: string) => string[];
+  /** Yêu cầu sửa của người dùng (prompt tại cảnh). */
+  instruction?: string;
+  /** Mã cảnh tùy biến hiện tại (khi sửa tiếp cảnh đã tùy biến). */
+  current?: string;
 };
 
 export async function writeCustomScene(video: Video, scene: Scene, o: CustomSceneOptions): Promise<{ code: string; assumptions: string[] }> {
@@ -165,7 +169,7 @@ ${o.contract}
 
 ${sceneBrief(video, scene, o.T)}
 KHỐI TIMING hiện tại: ${JSON.stringify({ dur: o.T.dur, cues: o.T.cues, ends: o.T.ends })}
-
+${o.current ? `\nMÃ CẢNH HIỆN TẠI (sửa trên nền này, giữ những gì yêu cầu không nhắc tới):\n${o.current.slice(0, 16000)}\n` : ""}${o.instruction ? `\nYÊU CẦU SỬA CỦA NGƯỜI DÙNG (bắt buộc làm theo, nhưng không được phá quy tắc an toàn khung hình, cỡ chữ ≥ 28 px, đồng bộ theo câu thoại): ${o.instruction}\n` : ""}
 CẢNH MẪU ĐÃ DUYỆT (bắt chước phong cách, lớp CSS, nhịp):
 ${o.examples.map((e, i) => `--- mẫu ${i + 1} ---\n${e.slice(0, 9000)}`).join("\n")}
 ${feedback ? `\nLỖI CỦA LẦN TRƯỚC (phải sửa hết):\n${feedback}` : ""}

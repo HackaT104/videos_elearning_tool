@@ -11,7 +11,8 @@ const hexA = (hex: string, a: number) => {
 
 export function themeVars(theme: Theme): Record<string, string> {
   const c = theme.colors;
-  const generic = theme.fonts.display.family === "Lora" ? "serif" : theme.fonts.display.family === "Patrick Hand" ? "cursive" : "sans-serif";
+  const guess = (f: Theme["fonts"]["display"]) => f.generic ?? (f.family === "Lora" ? "serif" : f.family === "Patrick Hand" ? "cursive" : "sans-serif");
+  const generic = guess(theme.fonts.display);
   return {
     "--bg": c.bg,
     "--bg2": c.bg2,
@@ -28,7 +29,7 @@ export function themeVars(theme: Theme): Record<string, string> {
     "--line": c.line,
     "--hl": c.highlight,
     "--font-display": fontStack(theme.fonts.display, generic),
-    "--font-body": fontStack(theme.fonts.body, theme.fonts.body.family === "Patrick Hand" ? "cursive" : "sans-serif"),
+    "--font-body": fontStack(theme.fonts.body, guess(theme.fonts.body)),
     "--w-display": String(theme.fonts.display.weight),
     "--w-body": String(theme.fonts.body.weight),
     "--w-bold": String(theme.fonts.bodyBold.weight),

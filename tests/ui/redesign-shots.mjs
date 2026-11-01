@@ -18,6 +18,7 @@ for (const [tag, vp, mobile] of [["pc", { width: 1366, height: 900 }, false], ["
     ["giong", `/p/${PID}/giong`, null],
     ["san-xuat", `/p/${PID}/san-xuat`, "Kiểm tra trước khi sản xuất"],
     ["duyet", `/p/${PID}/duyet`, null],
+    ["duyet-video", `/p/${PID}/duyet/CAR-L1_MO1_U1.5_1`, "Các cảnh"],
   ]) {
     await p.goto(BASE + path);
     if (wait) await p.getByText(wait).first().waitFor({ timeout: 15000 });
@@ -33,6 +34,10 @@ for (const [tag, vp, mobile] of [["pc", { width: 1366, height: 900 }, false], ["
     await p.screenshot({ path: `${S}/${tag}-san-xuat-menu.png` });
     await p.goto(`${BASE}/p/${PID}/phong-cach`);
     await p.waitForTimeout(1500);
+    await p.getByText("Font chữ trong video").scrollIntoViewIfNeeded();
+    await p.waitForTimeout(1200);
+    await p.screenshot({ path: `${S}/${tag}-font.png` });
+    await p.evaluate(() => window.scrollTo(0, 0));
     const img = p.locator("img.shot").first();
     if (await img.count()) { await img.click(); await p.waitForTimeout(500); await p.screenshot({ path: `${S}/${tag}-zoom.png` }); }
   }

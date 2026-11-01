@@ -1,10 +1,11 @@
 "use client";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead, VideoPicker } from "@/components/ui";
+import { ScenePrompt } from "@/components/scene-prompt";
 
 type QaItem = { kind: string; severity: string; scene?: string; message: string };
 type Row = { data: any; qa: { ok: boolean; items: QaItem[]; assumptions: Record<string, string[]>; sheet?: string; frames?: { file: string; label?: string; scene?: string }[]; rendered?: string; renderer?: string; renderedAt?: string } | null; approved: boolean; summary: VideoSum; timing: any };
@@ -17,14 +18,25 @@ export default function Duyet() {
   const { data, reload } = useApi<Row>(`/projects/${pid}/videos/${encodeURIComponent(key)}`, 4000);
   const [override, setOverride] = useState(false);
   const [scene, setScene] = useState("s1");
-  const [note, setNote] = useState("");
+  const [playing, setPlaying] = useState<string | null>(null);
+  const player = useRef<HTMLVideoElement>(null);
   const a = useAction();
   if (!data) return <div>Đang tải…</div>;
   const qa = data.qa;
   const v = data.data;
   const job = data.summary.job;
   const approve = () => a.run(async () => { await api(`/projects/${pid}/videos/${encodeURIComponent(key)}`, { method: "PATCH", json: { approve: true, override } }); reload(); }, "Đã duyệt – video sẽ được xuất ở bước 9");
-  const revise = () => a.run(async () => { await api(`/projects/${pid}/jobs`, { method: "POST", json: { kind: "revise", keys: [key], payload: { scene, note } } }); setNote(""); reload(); }, `AI đang sửa ${scene} theo ghi chú – sau đó bấm "Chỉ dựng lại hình" ở bước 7 để render lại`);
+  const starts: { id: string; start: number; dur: number }[] = data.timing?.scenes ?? [];
+  const pick = (sid: string) => {
+    setScene(sid);
+    const t = starts.find((x) => x.id === sid);
+    if (t && player.current) player.current.currentTime = t.start + 0.05;
+  };
+  const onTime = () => {
+    const t = player.current?.currentTime ?? 0;
+    setPlaying(starts.find((x) => t >= x.start && t < x.start + x.dur)?.id ?? null);
+  };
+  const thumb = (sid: string) => qa?.frames?.find((f) => f.scene === sid && /cuối cảnh/.test(f.label ?? ""))?.file;
   const custom = (sid: string) => a.run(() => api(`/projects/${pid}/jobs`, { method: "POST", json: { kind: "ai-script", keys: [key], payload: { custom: true, scene: sid } } }), `AI đang viết mã cảnh tùy biến ${sid} (lint + chạy thử tự động)`);
   const errors = qa?.items.filter((i) => i.severity === "error") ?? [];
   const warns = qa?.items.filter((i) => i.severity !== "error") ?? [];
@@ -34,18 +46,18 @@ export default function Duyet() {
         {data.approved ? <Badge tone="green">Đã duyệt</Badge> : (
           <>
             {qa && !qa.ok && <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} /> Bỏ qua lỗi QA</label>}
-            <button className="btn btn-primary" disabled={!data.summary.rendered || a.busy} onClick={approve}>✓ Duyệt</button>
+            <button className="btn btn-primary" disabled={!data.summary.rendered || a.busy} onClick={approve}>Duyệt video</button>
           </>
         )}
       </PageHead>
       {list.data && <VideoPicker pid={pid} videos={list.data} current={key} base="duyet" />}
       <Msg msg={a.msg} />
-      {job && <div className="mb-3 rounded bg-sky-50 px-3 py-2 text-sm text-sky-900">Đang chạy: {job.kind} · {job.message} ({Math.round(job.progress)}%)</div>}
+      {job && <div className="msg mb-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">{job.kind === "revise" ? "AI đang sửa cảnh" : "Đang chạy"}: {job.message} <span className="num">({Math.round(job.progress)}%)</span></div>}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div>
           <div className="card mb-4">
             {data.summary.rendered && qa?.rendered ? (
-              <video key={qa.renderedAt} className="w-full rounded bg-black" controls preload="metadata" src={`${fileUrl(qa.rendered)}&t=${qa.renderedAt}`}>
+              <video ref={player} onTimeUpdate={onTime} key={qa.renderedAt} className="w-full rounded-lg bg-black" controls preload="metadata" src={`${fileUrl(qa.rendered)}&t=${qa.renderedAt}`}>
                 <track kind="subtitles" srcLang="vi" label="Tiếng Việt" src={`/api/projects/${pid}/videos/${encodeURIComponent(key)}/vtt`} default />
               </video>
             ) : <div className="flex aspect-video items-center justify-center rounded bg-[#e9eeec] text-soft">Chưa render – chạy ở bước 7</div>}
@@ -73,27 +85,39 @@ export default function Duyet() {
             {warns.map((i, k) => <div key={k} className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">[{i.kind}{i.scene ? ` · ${i.scene}` : ""}] {i.message}</div>)}
             {qa && qa.items.length === 0 && <div className="text-sm text-brand-dark">Không phát hiện lỗi: bố cục, chữ ≥ 28 px, số liệu khớp nguồn, âm thanh AAC, không im lặng &gt; 2,5 s, thời lượng khớp.</div>}
           </div>
-          <div className="card mb-4">
-            <h2 className="mb-2 font-semibold">AI / template tự quyết – cần duyệt</h2>
-            {v.scenes.map((s: any) => {
-              const list = [...new Set([...(s.assumptions ?? []), ...(qa?.assumptions?.[s.id] ?? [])])];
-              return (
-                <div key={s.id} className="mb-2">
-                  <div className="flex items-center gap-2 text-sm font-medium"><span className="num rounded-md bg-ink px-1.5 py-0.5 text-[12px] text-white">{s.id}</span> {s.title} <span className="text-xs text-soft">· {s.design?.template ?? "tự động"}</span>
-                    <button className="ml-auto text-xs text-brand underline" onClick={() => custom(s.id)}>AI viết cảnh tùy biến</button></div>
-                  {list.length ? list.map((x, k) => <div key={k} className="assume mt-1">{x}</div>) : <div className="text-xs text-soft">Không có</div>}
-                  {s.notes?.length > 0 && <div className="mt-1 text-xs text-soft">Ghi chú đã gửi: {s.notes.join(" · ")}</div>}
-                </div>
-              );
-            })}
-          </div>
-          <div className="card">
-            <h2 className="mb-2 font-semibold">Ghi chú sửa</h2>
-            <div className="flex gap-2">
-              <select className="input w-24 shrink-0 self-start" value={scene} onChange={(e) => setScene(e.target.value)}>{v.scenes.map((s: any) => <option key={s.id} value={s.id}>{s.id}</option>)}</select>
-              <textarea className="input" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ví dụ: hủy tín chỉ theo chỉ dẫn của chủ dự án, không phải người mua; đổi mũi tên sang hướng ngược lại" />
+          <div className="card mb-4 p-0">
+            <div className="px-5 pt-4 sm:px-5">
+              <h2 className="text-base font-semibold">Các cảnh</h2>
+              <p className="text-[13px] text-soft">Chọn một cảnh để nhảy tới đoạn đó trong video, xem chỗ AI tự quyết và nhờ AI sửa riêng cảnh này.</p>
             </div>
-            <button className="btn btn-primary mt-2" disabled={!note || a.busy} onClick={revise}>Gửi ghi chú – AI sửa đúng cảnh đó</button>
+            <ul className="mt-2 divide-y divide-line/70">
+              {v.scenes.map((s: any) => {
+                const sel = s.id === scene;
+                const list = [...new Set([...(s.assumptions ?? []), ...(qa?.assumptions?.[s.id] ?? [])])] as string[];
+                const img = thumb(s.id);
+                return (
+                  <li key={s.id} className={sel ? "bg-[#f8faf9]" : ""}>
+                    <button type="button" aria-expanded={sel} onClick={() => pick(s.id)} className="row-link flex w-full items-center gap-3 px-4 py-2.5 text-left sm:px-5">
+                      <span className="relative block aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-[#e9eeec]">
+                        {img && <img src={fileUrl(img)} alt="" className="shot h-full w-full object-cover" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5 text-[13px] font-semibold"><span className="num">{s.id}</span>{playing === s.id && <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand" aria-label="đang phát" />}</span>
+                        <span className="block truncate text-sm">{s.title}</span>
+                        <span className="block text-[12px] text-soft">{s.design?.template === "custom" ? "cảnh tùy biến" : s.design?.template ?? "tự động"}{list.length ? ` · ${list.length} chỗ cần duyệt` : ""}{s.history?.length ? ` · đã sửa ${s.history.length} lần` : ""}</span>
+                      </span>
+                    </button>
+                    {sel && (
+                      <div className="px-4 pb-4 sm:px-5">
+                        {list.map((x, k) => <div key={k} className="assume mt-1">{x}</div>)}
+                        <div className="mt-3"><ScenePrompt pid={pid} vkey={key} scene={s} busy={!!job} onQueued={reload} /></div>
+                        <button className="mt-2 text-[12px] text-soft underline" onClick={() => custom(s.id)}>Hoặc để AI viết lại cảnh này từ đầu (mã tùy biến)</button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
       </div>

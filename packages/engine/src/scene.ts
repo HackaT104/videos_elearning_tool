@@ -12,7 +12,7 @@ import { TEMPLATES, type TemplateCtx } from "./templates";
 export function sceneCtx(video: Video, scene: Scene): TemplateCtx {
   return {
     p: scene.id,
-    theme: getTheme(video.style),
+    theme: getTheme(video.style, video.font),
     slow: tierOfLevel(video.level) !== "co-ban",
     sentences: scene.sentences.map((s) => s.text),
     sceneTitle: scene.title,

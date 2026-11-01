@@ -1,6 +1,6 @@
 // API HTTP cho giao diện (Next.js proxy /api/* → đây). Chạy cùng tiến trình worker.
 
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { extname, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { Hono } from "hono";
@@ -14,10 +14,10 @@ import {
   listProjects, listVideos, paths, setVideoFlags, STORAGE, updateJob, updateProject, upsertVideo, activeJobFor, cacheVoices, listVoices, type JobKind,
 } from "@cvs/db";
 import {
-  archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject,
+  archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
 } from "@cvs/studio";
 import { CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, installCit, restartCit } from "@cvs/tts";
-import { THEMES, THEME_IDS } from "@cvs/themes";
+import { DEFAULT_FONT_PAIR, FONT_PAIRS, fontFaceUrlCss, fontFilePath, THEMES, THEME_IDS } from "@cvs/themes";
 import { TEMPLATES, ICON_NAMES } from "@cvs/engine";
 import { aiAvailable } from "@cvs/ai";
 
@@ -29,15 +29,26 @@ app.onError((e, c) => c.json({ error: e.message }, 500));
 app.get("/health", (c) => c.json({ ok: true, storage: STORAGE, ai: aiAvailable() }));
 app.get("/meta", (c) =>
   c.json({
-    themes: THEME_IDS.map((id) => ({ id, name: THEMES[id].name, description: THEMES[id].description, dark: THEMES[id].dark, colors: THEMES[id].colors })),
+    themes: THEME_IDS.map((id) => ({ id, name: THEMES[id].name, description: THEMES[id].description, dark: THEMES[id].dark, colors: THEMES[id].colors, fonts: { display: THEMES[id].fonts.display.family, body: THEMES[id].fonts.body.family, displayWeight: THEMES[id].fonts.display.weight } })),
     templates: Object.values(TEMPLATES).map((t) => ({ id: t.id, label: t.label, when: t.when, example: t.example, schema: t.schema })),
     icons: ICON_NAMES,
     levels: LEVEL_PRESETS,
     defaultGlossary: DEFAULT_GLOSSARY,
     ai: aiAvailable(),
     edgeVoices: EDGE_VOICES,
+    fonts: FONT_PAIRS.map((p) => ({ id: p.id, name: p.name, description: p.description, display: p.display.family, body: p.body.family, displayWeight: p.display.weight, generic: p.display.generic ?? "sans-serif" })),
   }),
 );
+// Phông cho trang xem trước: CSS @font-face trỏ tới file trong gói @fontsource (trình duyệt chỉ tải phần ký tự cần).
+app.get("/fonts.css", (c) => {
+  const refs = FONT_PAIRS.flatMap((p) => [p.display, p.body]);
+  return c.body(fontFaceUrlCss(refs, (pkg, file) => `/api/fonts/${pkg}/${file}`), 200, { "content-type": "text/css; charset=utf-8", "cache-control": "public, max-age=86400" });
+});
+app.get("/fonts/:pkg/:file", (c) => {
+  const p = fontFilePath(c.req.param("pkg"), c.req.param("file"));
+  if (!p) return c.text("Không có phông", 404);
+  return c.body(readFileSync(p), 200, { "content-type": "font/woff2", "cache-control": "public, max-age=604800, immutable" });
+});
 app.get("/tts/status", async (c) => {
   const cit = new CitClient();
   const st = await cit.status();
@@ -103,6 +114,7 @@ app.patch("/projects/:id", async (c) => {
       const d = v.data;
       if (b.settings?.style) d.style = b.settings.style;
       if (b.settings?.engine) d.engine = b.settings.engine;
+      if (b.settings && "font" in b.settings) d.font = b.settings.font && b.settings.font !== DEFAULT_FONT_PAIR ? b.settings.font : undefined;
       upsertVideo(p.id, d);
     }
   }
@@ -182,6 +194,7 @@ const videoSummary = (projectId: string, v: ReturnType<typeof listVideos>[number
     estimated: timing.estimated,
     engine: v.data.engine,
     style: v.data.style,
+    font: v.data.font,
     voice: v.data.voice,
     pace: v.data.pace,
     aiWritten: !!v.data.aiWritten,
@@ -208,6 +221,14 @@ app.put("/projects/:id/videos/:key", async (c) => {
   upsertVideo(id, video);
   setVideoFlags(id, video.key, { approved: false });
   return c.json({ ok: true });
+});
+// Hoàn tác lần sửa cảnh gần nhất rồi render lại (giữ giọng).
+app.post("/projects/:id/videos/:key/scenes/:sid/undo", (c) => {
+  const id = c.req.param("id");
+  const key = c.req.param("key");
+  if (!undoSceneDesign(id, key, c.req.param("sid"))) return c.json({ error: "Cảnh này chưa có lần sửa nào để hoàn tác" }, 400);
+  const job = enqueueJob(id, "render", key, { skipStyle: true });
+  return c.json({ ok: true, job });
 });
 app.patch("/projects/:id/videos/:key", async (c) => {
   const id = c.req.param("id");

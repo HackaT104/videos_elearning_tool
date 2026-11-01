@@ -81,7 +81,12 @@ async function run(job: Job) {
         break;
       }
       case "revise":
-        await reviseWithNote(ctx, job.payload.scene, job.payload.note);
+        await reviseWithNote(ctx, job.payload.scene, job.payload.note, { custom: !!job.payload.custom });
+        // render lại ngay để người dùng xem kết quả (chỉ khi đã chọn phong cách)
+        if (job.payload.rerender !== false && ctx.settings.styleConfirmed) {
+          updateJob(job.id, { message: "Render lại – chờ lượt" });
+          await withRenderSlot(() => runSteps(ctx, ["render"], { ...(job.payload ?? {}), skipStyle: true }));
+        }
         break;
       case "ai-script":
         if (job.payload.custom) await makeCustomScene(ctx, job.payload.scene);

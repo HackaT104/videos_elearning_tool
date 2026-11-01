@@ -5,13 +5,13 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { computeTiming, createNormalizer, levelFolder, makeSentences, type OutlineDoc, type StyleId, type Video, type VoiceConfig } from "@cvs/core";
-import { reviseScene, writeOutline, writeScript } from "@cvs/ai";
+import { aiAvailable, reviseScene, writeOutline, writeScript } from "@cvs/ai";
 import { addFile, getProject, getVideo, glossaryFor, listVideos, paths, setVideoFlags, upsertVideo, type ProjectSettings } from "@cvs/db";
 import { effectiveDesign, qaTimes } from "@cvs/engine";
 import { hfBuild, hfPreview, launchBrowser } from "@cvs/engine-hf";
 import { THEME_IDS, THEMES } from "@cvs/themes";
 import { CitClient, mockGenerate, probe, synthesizeSample } from "@cvs/tts";
-import { currentTiming, stepBuild, stepQa, type Ctx } from "./pipeline";
+import { currentTiming, makeCustomScene, stepBuild, stepQa, type Ctx } from "./pipeline";
 
 // ---------- Xuất ----------
 
@@ -202,6 +202,7 @@ export async function aiWriteScript(projectId: string, input: { kind: "outline" 
     audience: input.audience,
     sourceText: input.sourceText,
   });
+  if (p.settings.font) video.font = p.settings.font;
   const f = addFile(projectId, `${input.fileName} (AI viết)`, input.level, "script", { kind: "script", videos: [video.key], aiWritten: true, outline });
   upsertVideo(projectId, video, { file_id: f.id, status: "script" });
   return { video, outline };
@@ -209,20 +210,47 @@ export async function aiWriteScript(projectId: string, input: { kind: "outline" 
 
 // ---------- Sửa cảnh theo ghi chú ----------
 
-export async function reviseWithNote(ctx: Ctx, sceneId: string, note: string) {
+/**
+ * Sửa một cảnh theo yêu cầu bằng lời (prompt tại cảnh). Mặc định AI chọn/điền lại template;
+ * `custom` (hoặc cảnh đang là cảnh tùy biến) → AI viết lại mã cảnh. Thiết kế cũ được lưu để hoàn tác.
+ */
+export async function reviseWithNote(ctx: Ctx, sceneId: string, note: string, o: { custom?: boolean } = {}) {
+  if (!aiAvailable()) throw new Error("Chưa đăng nhập Claude – vào mục Claude AI để đăng nhập rồi gửi lại yêu cầu sửa cảnh");
   const row = getVideo(ctx.projectId, ctx.key)!;
   const video = row.data;
   const i = video.scenes.findIndex((s) => s.id === sceneId);
   if (i < 0) throw new Error(`Không có cảnh ${sceneId}`);
   const scene = video.scenes[i];
   scene.notes = [...(scene.notes ?? []), note];
+  upsertVideo(ctx.projectId, video);
+  if (o.custom || scene.design?.template === "custom") {
+    ctx.progress("design", 10, `AI viết lại mã cảnh ${sceneId}`);
+    await makeCustomScene(ctx, sceneId, note);
+    setVideoFlags(ctx.projectId, ctx.key, { approved: false });
+    await stepQa(ctx);
+    return;
+  }
+  ctx.progress("design", 10, `AI sửa ${sceneId}: ${note.slice(0, 60)}`);
   const timing = currentTiming(ctx.projectId, video);
   const r = await reviseScene(video, scene, note, timing.scenes[i]);
+  if (scene.design) scene.history = [...(scene.history ?? []), scene.design].slice(-5);
   scene.design = r.design;
   scene.assumptions = [...new Set([...(scene.assumptions ?? []), ...r.assumptions.map((a) => `AI: ${a}`)])];
   upsertVideo(ctx.projectId, video);
   setVideoFlags(ctx.projectId, ctx.key, { approved: false });
   await stepQa(ctx);
+}
+
+/** Hoàn tác lần sửa gần nhất của một cảnh (lấy thiết kế trước đó trong history). */
+export function undoSceneDesign(projectId: string, key: string, sceneId: string): boolean {
+  const row = getVideo(projectId, key);
+  const scene = row?.data.scenes.find((s) => s.id === sceneId);
+  if (!row || !scene?.history?.length) return false;
+  scene.design = scene.history.pop();
+  scene.notes = [...(scene.notes ?? []), "(hoàn tác lần sửa trước)"];
+  upsertVideo(projectId, row.data);
+  setVideoFlags(projectId, key, { approved: false });
+  return true;
 }
 
 export { computeTiming, basename, stepBuild };

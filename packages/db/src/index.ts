@@ -37,6 +37,8 @@ export type ProjectSettings = {
   hfRenderer: "auto" | "cli" | "fallback";
   /** Người dùng đã chọn phong cách từ 10 mẫu (bắt buộc trước khi render). */
   styleConfirmed?: boolean;
+  /** Cặp phông chữ cho video (FONT_PAIRS); trống = theo phong cách. */
+  font?: string;
   /** Tuỳ chọn CIT mặc định cho dự án. */
   cit?: { temperature?: number; seed?: number | null; useDict?: boolean };
 };

@@ -111,7 +111,7 @@ export async function stepDesign(ctx: Ctx, o: { redesign?: boolean } = {}) {
 }
 
 /** Cảnh tùy biến (AI viết mã) khi không template nào phù hợp. */
-export async function makeCustomScene(ctx: Ctx, sceneId: string) {
+export async function makeCustomScene(ctx: Ctx, sceneId: string, instruction?: string) {
   const video = load(ctx);
   const timing = currentTiming(ctx.projectId, video);
   const i = video.scenes.findIndex((s) => s.id === sceneId);
@@ -130,7 +130,10 @@ export async function makeCustomScene(ctx: Ctx, sceneId: string) {
     contract,
     examples,
     lint: (code) => (video.engine === "hyperframes" ? lintErrors(lintScene(code, sceneId)).map((x) => `${x.rule}: ${x.message}${x.line ? ` (dòng ${x.line})` : ""}`) : lintRemotionScene(code)),
+    instruction,
+    current: scene.design?.template === "custom" ? scene.design.customCode?.[video.engine] : undefined,
   });
+  if (scene.design) scene.history = [...(scene.history ?? []), scene.design].slice(-5);
   scene.design = { template: "custom", params: {}, by: "ai", customCode: { ...(scene.design?.customCode ?? {}), [video.engine]: r.code } };
   scene.assumptions = r.assumptions;
   upsertVideo(ctx.projectId, video);

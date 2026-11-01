@@ -24,6 +24,7 @@ export async function ingestFile(projectId: string, name: string, buf: Buffer, l
   const summary = { kind: result.kind, videos: result.videos.map((v) => v.key), warnings: result.warnings, outline: result.outline, topic: result.topic, stored: safe };
   const f = addFile(projectId, name, level, result.kind, summary);
   for (const v of result.videos) {
+    if (p.settings.font) v.font = p.settings.font;
     const existing = getVideo(projectId, v.key);
     // giữ thiết kế/ghi chú cũ nếu cảnh có cùng lời thoại
     if (existing) {
@@ -38,6 +39,7 @@ export async function ingestFile(projectId: string, name: string, buf: Buffer, l
       v.voice = existing.data.voice;
       v.pace = existing.data.pace;
       v.style = existing.data.style;
+      v.font = existing.data.font;
       v.engine = existing.data.engine;
     }
     upsertVideo(projectId, v, { file_id: f.id, status: existing?.status ?? "script" });

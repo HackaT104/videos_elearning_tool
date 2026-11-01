@@ -6,6 +6,7 @@ import { api, fmtSec } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead, VideoPicker } from "@/components/ui";
+import { ScenePrompt } from "@/components/scene-prompt";
 
 type Meta = { templates: { id: string; label: string; when: string; example: unknown }[] };
 
@@ -39,14 +40,14 @@ export default function KichBan() {
         {v.context && <details className="md:col-span-3 text-sm"><summary className="cursor-pointer text-soft">Ngữ cảnh tài liệu (bảng số liệu, mô tả infographic) – dùng cho bước dựng cảnh</summary><pre className="mt-1 whitespace-pre-wrap text-xs">{v.context}</pre></details>}
       </div>
       {v.scenes.map((s, si) => (
-        <SceneEditor key={s.id} scene={s} T={row.data?.timing?.scenes?.[si]} templates={meta.data?.templates ?? []} onChange={(fn) => upd((x) => fn(x.scenes[si]))} />
+        <SceneEditor key={s.id} scene={s} T={row.data?.timing?.scenes?.[si]} templates={meta.data?.templates ?? []} onChange={(fn) => upd((x) => fn(x.scenes[si]))} prompt={<ScenePrompt pid={pid} vkey={key} scene={s} busy={dirty} onQueued={row.reload} />} />
       ))}
       <button className="btn" onClick={() => upd((x) => { const n = x.scenes.length + 1; const last = x.scenes.at(-1); x.scenes.push({ id: `s${n}`, scriptStart: last?.scriptEnd ?? 0, scriptEnd: (last?.scriptEnd ?? 0) + 20, title: `Cảnh ${n}`, visual: "", onscreen: [], sentences: [] }); })}>+ Thêm cảnh</button>
     </div>
   );
 }
 
-function SceneEditor({ scene: s, T, templates, onChange }: { scene: Scene; T: any; templates: Meta["templates"]; onChange: (fn: (s: Scene) => void) => void }) {
+function SceneEditor({ scene: s, T, templates, onChange, prompt }: { scene: Scene; T: any; templates: Meta["templates"]; onChange: (fn: (s: Scene) => void) => void; prompt: React.ReactNode }) {
   const [params, setParams] = useState(JSON.stringify(s.design?.params ?? {}, null, 1));
   const [perr, setPerr] = useState<string | null>(null);
   useEffect(() => setParams(JSON.stringify(s.design?.params ?? {}, null, 1)), [s.design]);
@@ -100,6 +101,7 @@ function SceneEditor({ scene: s, T, templates, onChange }: { scene: Scene; T: an
           )}
         </div>
       </details>
+      <div className="mt-3 border-t border-line pt-3">{prompt}</div>
     </div>
   );
 }
