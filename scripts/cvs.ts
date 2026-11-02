@@ -13,14 +13,19 @@ Xem
   video <pid> <key>                        Kịch bản + thiết kế + timing từng cảnh
   templates                                Thư viện template (schema, ví dụ), biểu tượng, kiểu chữ chuyển động, phong cách, phông
   readings <pid> [key] [--warn]            Mọi câu (id, lời thoại, cách đọc, cảnh báo, đề xuất đang chờ); --warn: chỉ câu còn cảnh báo
-  prompt <design|illustration|custom|readings|review-readings> <pid> <key> [sid] [--note "..."]
+  prompt <design|illustration|custom|readings|review-readings|write-script> <pid> <key> [sid] [--note "..."]
                                            In đúng prompt mà Claude API sẽ nhận cho việc này (làm theo prompt đó)
+  files <pid>                              Tài liệu đã tải (mã tài liệu, loại, video, đã phân tích chưa)
+  doc <pid> <fileId>                       Claude đọc và phân tích tài liệu: in đúng prompt phân tích (dàn ý tài liệu,
+                                           khối video đầy đủ, video máy đã bóc, thư viện template) – trả lời bằng set-plan
   status <pid>                             Tóm tắt video + job + yêu cầu đang chờ của dự án
 
 Sửa
   set-design <pid> <key> <sid> <json-file|->  Ghi {"template","params","assumptions"} cho cảnh [--note "..."]
   set-svg <pid> <key> <sid> <svg-file|->      Ghi hình minh hoạ SVG cho cảnh illustration [--brief "..."]
   set-custom <pid> <key> <sid> <code-file|->  Ghi mã cảnh tùy biến (HyperFrames HTML / Remotion TSX), kiểm bằng lint [--note "..."]
+  set-plan <pid> <fileId> <json-file|->     Ghi kế hoạch video của tài liệu {"videos":[…],"proposed":[…]} (kiểm như đường API)
+  set-script <pid> <key> <json-file|->     Ghi kịch bản viết lại {"title","scenes":[{title,visual,onscreen,vo,seconds}],"assumptions"}
   set-reading <pid> <key> <sid> <idx> <cách đọc...>  Sửa cách đọc một câu (khoá như sửa tay)
   suggest-reading <pid> <key> <sid> <idx> <cách đọc...> [--reason "..."] [--glossary "HSE=hát ét ét;PPE=pê pê e"]
                                            Lưu ĐỀ XUẤT cách đọc (người dùng chấp nhận/bỏ qua trong app; không đổi cách đọc)
@@ -194,8 +199,34 @@ export async function main(argv: string[], io: Io): Promise<number> {
       }
       case "prompt": {
         need(a, 3, "prompt <design|illustration|custom|readings|review-readings> <pid> <key> [sid] [--note \"...\"]");
-        const p = await api.post("/claude-code/prompt", { kind: a[0], projectId: a[1], videoKey: a[2], sceneId: a[3], note: flags.note });
+        const p = await api.post("/claude-code/prompt", { kind: a[0], projectId: a[1], videoKey: a[2], fileId: a[2], sceneId: a[3], note: flags.note });
         io.out(`===== SYSTEM =====\n${p.system}\n\n===== NỘI DUNG =====\n${p.content}`);
+        return 0;
+      }
+      case "files": {
+        need(a, 1, "files <pid>");
+        const p = await api.get(`/projects/${enc(a[0])}`);
+        json(io, p.files.map((f: any) => ({ id: f.id, name: f.name, level: f.level, kind: f.kind, videos: f.summary?.videos ?? [], analyzable: /\.docx$/i.test(f.summary?.stored ?? ""), plan: f.summary?.plan ? { by: f.summary.plan.by, at: f.summary.plan.at, videos: f.summary.plan.videos.length, proposed: f.summary.plan.proposed.length } : null })));
+        return 0;
+      }
+      case "doc": {
+        need(a, 2, "doc <pid> <fileId>");
+        const p = await api.post("/claude-code/prompt", { kind: "analyze-doc", projectId: a[0], fileId: a[1] });
+        io.out(`===== SYSTEM =====\n${p.system}\n\n===== NỘI DUNG =====\n${p.content}`);
+        return 0;
+      }
+      case "set-plan":
+      case "set-script": {
+        const plan = cmd === "set-plan";
+        need(a, 3, plan ? "set-plan <pid> <fileId> <json-file|->" : "set-script <pid> <key> <json-file|->");
+        let d: any;
+        try {
+          d = JSON.parse(io.readFile(a[2]));
+        } catch (e) {
+          throw new Error(`File JSON không đọc được: ${(e as Error).message}`);
+        }
+        const r = await api.post(plan ? `/projects/${enc(a[0])}/files/${enc(a[1])}/plan` : `${vpath(a[0], a[1])}/script`, d);
+        json(io, plan ? { ok: r.ok, videos: r.plan?.videos.map((v: any) => ({ key: v.key, title: v.title, mode: v.suggestedMode, scenes: v.scenes?.length ?? null, issues: v.issues.length })), proposed: r.plan?.proposed.length ?? 0 } : r);
         return 0;
       }
       case "status": {

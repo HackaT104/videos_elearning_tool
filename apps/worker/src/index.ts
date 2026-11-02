@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { claimNextJob, getDb, getJob, getProject, paths, requeueStale, STORAGE, updateJob, type Job } from "@cvs/db";
 import { startApi } from "./api";
 import { ensureCitRunning, ensureZerottsRunning, installZerotts, startCitWatchdog, startZerottsWatchdog, stopCit, stopZerotts, zerottsInstalled } from "@cvs/tts";
-import { aiReviewReadings, assertStyleChosen, aiWriteScript, loadSavedClaudeKey, runAgent, JOB_STEPS, makeCustomScene, reviseWithNote, runSteps, Stopped, STEP_LABELS, stylePreview, voiceSamples, type Ctx, type StepName } from "@cvs/studio";
+import { aiAnalyzeDoc, aiReviewReadings, assertStyleChosen, rewriteFromPlan, aiWriteScript, loadSavedClaudeKey, runAgent, JOB_STEPS, makeCustomScene, reviseWithNote, runSteps, Stopped, STEP_LABELS, stylePreview, voiceSamples, type Ctx, type StepName } from "@cvs/studio";
 
 const MAX = Number(process.env.CVS_WORKER_CONCURRENCY ?? 4);
 const MAX_RENDER = Number(process.env.CVS_RENDER_CONCURRENCY ?? 1);
@@ -90,7 +90,11 @@ async function run(job: Job) {
         break;
       case "ai-script":
         if (job.payload.custom) await makeCustomScene(ctx, job.payload.scene);
+        else if (job.payload.planKey) result = await rewriteFromPlan(job.project_id, job.payload.planKey);
         else result = await aiWriteScript(job.project_id, job.payload);
+        break;
+      case "analyze-doc":
+        result = await aiAnalyzeDoc(job.project_id, job.payload.fileId, (pct, message) => updateJob(job.id, { step: "analyze", progress: pct, message }));
         break;
       case "theme-preview":
         result = await stylePreview(job.project_id, job.video_key, job.payload?.scene);

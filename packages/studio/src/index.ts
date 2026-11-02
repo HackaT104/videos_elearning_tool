@@ -6,3 +6,4 @@ export * from "./agent";
 export * from "./assets";
 export * from "./claude-code";
 export * from "./claude-code-runner";
+export * from "./docplan";

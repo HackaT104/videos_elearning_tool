@@ -7,6 +7,7 @@ import { getProject, getVideo, setVideoFlags, upsertVideo } from "@cvs/db";
 import { illustrationStyleHints } from "@cvs/engine";
 import { getTheme } from "@cvs/themes";
 import { illustrationKey } from "./assets";
+import { docPlanPrompt, rewritePrompt } from "./docplan";
 import { currentTiming, customLint, customSceneInput, readingIssues } from "./pipeline";
 
 export type SceneEdit = { design?: Partial<SceneDesign>; assumptions?: string[]; note?: string; by?: SceneDesign["by"] };
@@ -75,10 +76,12 @@ function illustrationParams(style: string, font: string | undefined, scene: Scen
   return params;
 }
 
-export type PromptKind = "design" | "illustration" | "custom" | "readings" | "review-readings";
+export type PromptKind = "design" | "illustration" | "custom" | "readings" | "review-readings" | "analyze-doc" | "write-script";
 
-/** Prompt mà Claude API sẽ nhận cho việc này – Claude Code làm theo đúng prompt đó để chất lượng như đường API. */
+/** Prompt mà Claude API sẽ nhận cho việc này – Claude Code làm theo đúng prompt đó để chất lượng như đường API. "analyze-doc": key = mã tài liệu. */
 export async function claudeCodePrompt(projectId: string, key: string, kind: PromptKind, sceneId?: string, note?: string): Promise<Prompt> {
+  if (kind === "analyze-doc") return docPlanPrompt(projectId, key);
+  if (kind === "write-script") return rewritePrompt(projectId, key);
   const row = getVideo(projectId, key);
   if (!row) throw new Error("Không tìm thấy video");
   const video = row.data;

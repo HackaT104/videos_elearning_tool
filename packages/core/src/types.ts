@@ -58,6 +58,8 @@ export type Scene = {
   design?: SceneDesign;
   /** Ghi chú sửa của người duyệt (ngôn ngữ tự nhiên). */
   notes?: string[];
+  /** Gợi ý hình từ bước Claude phân tích tài liệu (template + cách dựng) – đưa vào prompt thiết kế. */
+  hint?: string;
   /** Các thiết kế trước của cảnh (mới nhất ở cuối, tối đa 5) để hoàn tác lần sửa bằng AI. */
   history?: SceneDesign[];
 };
@@ -150,10 +152,15 @@ export type OutlineDoc = {
 
 export type InputKind = "script" | "outline" | "topic";
 
+/** Một bài (unit) trong tài liệu nội dung module: "unit_number: 1.1", "duration", "section_2_type". */
+export type DocUnit = { number: string; title: string; duration?: string; sectionType?: string; videos?: string[] };
+
 export type ParseResult = {
   kind: InputKind;
   fileName: string;
   videos: Video[];
+  /** Các bài khi tài liệu là nội dung module (có "unit_number:"). */
+  units?: DocUnit[];
   outline?: OutlineDoc;
   topic?: string;
   warnings: string[];

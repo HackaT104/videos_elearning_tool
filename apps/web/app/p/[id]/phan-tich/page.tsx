@@ -5,6 +5,7 @@ import { api, fmtSec } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead, STATUS_LABEL } from "@/components/ui";
+import { DocAnalysis } from "@/components/doc-plan";
 
 export default function PhanTich() {
   const { project } = useProject();
@@ -15,6 +16,7 @@ export default function PhanTich() {
   const flag = (key: string, f: Record<string, boolean>) => a.run(async () => { await api(`/projects/${pid}/videos/${encodeURIComponent(key)}`, { method: "PATCH", json: f }); reload(); });
   const pending = project!.files.filter((f) => f.kind === "outline" || f.kind === "topic");
   const todo = data?.filter((v) => v.include && !v.existing) ?? [];
+  const docs = project!.files.filter((f) => /\.docx$/i.test(f.summary?.stored ?? "")).slice(-3).reverse();
   return (
     <div>
       <PageHead step={2} title="Phân tích – danh sách video">
@@ -23,6 +25,7 @@ export default function PhanTich() {
       {project!.warnings.length > 0 && (
         <div className="assume mb-3 text-sm">⚠ Trùng tên file giữa các cấp độ (mã video đã có tiền tố cấp độ nên không ghi đè): {project!.warnings.join("; ")}</div>
       )}
+      {docs.map((f) => <DocAnalysis key={f.id} pid={pid} fileId={f.id} ai={!!meta.data?.ai} />)}
       <div className="card mb-4 overflow-x-auto">
         <table className="tbl">
           <thead>

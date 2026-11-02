@@ -10,7 +10,7 @@ import {
   type ColumnMap, type GlossaryEntry, type Video,
 } from "@cvs/core";
 import {
-  addGlossary, createProject, deleteGlossary, deleteVideo, enqueueJob, getJob, getProject, getVideo, glossaryFor, listFiles, listGlossary, listJobs,
+  addGlossary, createProject, deleteGlossary, deleteVideo, enqueueJob, getFile, getJob, getProject, getVideo, glossaryFor, listFiles, listGlossary, listJobs,
   listProjects, listVideos, paths, setVideoFlags, STORAGE, updateJob, updateProject, upsertVideo, activeJobFor, cacheVoices, listVoices, type JobKind,
   addClaudeRequest, CLAUDE_REQUEST_KINDS, getClaudeRequest, listClaudeRequests, updateClaudeRequest, type ClaudeRequestKind,
 } from "@cvs/db";
@@ -19,6 +19,7 @@ import {
   applySceneEdit, claudeCodePrompt, archiveItems, archiveSnapshots, deleteItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
   acceptAllReadings, resolveReadingSuggestion, setReadingSuggestion, videoVtt, pickFolder, NoGuiError,
   claudeRunnerStatus, startClaudeRun, installClaudeCode, openClaudeLogin, claudeCodeSettings, setClaudeCodeSettings,
+  applyDocPlan, docPlanView, saveDocPlan, saveScriptReply,
 } from "@cvs/studio";
 import {
   CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, ensureZerottsRunning, installCit, installZerotts, restartCit, restartZerotts,
@@ -195,6 +196,43 @@ app.post("/projects/:id/upload", async (c) => {
   if (firstKey && p && !p.settings.styleConfirmed) enqueueJob(id, "theme-preview", firstKey, {});
   return c.json(out);
 });
+// ---------- Claude đọc và phân tích tài liệu: kế hoạch video ----------
+app.get("/projects/:id/files/:fid/plan", (c) => {
+  if (!getFile(c.req.param("id"), c.req.param("fid"))) return c.json({ error: "Không tìm thấy tài liệu" }, 404);
+  return c.json(docPlanView(c.req.param("id"), c.req.param("fid")));
+});
+// Claude Code gửi kế hoạch (`pnpm cvs set-plan`) – kiểm như đường API
+app.post("/projects/:id/files/:fid/plan", async (c) => {
+  const b = await c.req.json().catch(() => null);
+  if (!getFile(c.req.param("id"), c.req.param("fid"))) return c.json({ error: "Không tìm thấy tài liệu" }, 404);
+  try {
+    const r = await saveDocPlan(c.req.param("id"), c.req.param("fid"), b?.plan ?? b, "claude-code");
+    return c.json(r, r.ok ? 200 : 400);
+  } catch (e) {
+    return c.json({ ok: false, errors: [(e as Error).message] }, 400);
+  }
+});
+app.post("/projects/:id/files/:fid/apply", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  if (!getFile(c.req.param("id"), c.req.param("fid"))) return c.json({ error: "Không tìm thấy tài liệu" }, 404);
+  try {
+    return c.json(await applyDocPlan(c.req.param("id"), c.req.param("fid"), b.choices ?? []));
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+});
+// Claude Code gửi kịch bản viết lại (`pnpm cvs set-script`)
+app.post("/projects/:id/videos/:key/script", async (c) => {
+  const b = await c.req.json().catch(() => null);
+  if (!getProject(c.req.param("id"))) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  try {
+    const r = await saveScriptReply(c.req.param("id"), c.req.param("key"), b);
+    return c.json(r, r.ok ? 200 : 400);
+  } catch (e) {
+    return c.json({ ok: false, errors: [(e as Error).message] }, 400);
+  }
+});
+
 // ---------- ảnh của dự án (dùng trong cảnh image-focus) ----------
 const IMG_MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml" };
 app.get("/projects/:id/assets", (c) => {
@@ -443,6 +481,11 @@ app.post("/projects/:id/jobs", async (c) => {
     // rà soát cách đọc: một lượt mỗi dự án
     const review = b.kind === "reading-review" ? listJobs(id, 50).find((j) => j.kind === "reading-review" && ["queued", "running"].includes(j.status)) : null;
     if (review) return review;
+    // phân tích tài liệu: một lượt mỗi tài liệu
+    const fid = (b.payload as { fileId?: string } | undefined)?.fileId;
+    if (b.kind === "analyze-doc" && !getFile(id, String(fid ?? ""))) throw new Error("Không tìm thấy tài liệu cần phân tích");
+    const doc = b.kind === "analyze-doc" ? listJobs(id, 100).find((j) => j.kind === "analyze-doc" && j.payload?.fileId === fid && ["queued", "running"].includes(j.status)) : null;
+    if (doc) return doc;
     return enqueueJob(id, b.kind, k, b.payload ?? {});
   });
   return c.json(jobs);
@@ -466,17 +509,19 @@ app.post("/claude-code/requests", async (c) => {
   if (!getProject(String(b.projectId ?? ""))) return c.json({ error: "Không tìm thấy dự án" }, 404);
   if (!CLAUDE_REQUEST_KINDS.includes(b.kind)) return c.json({ error: `"kind" phải là ${CLAUDE_REQUEST_KINDS.join(" | ")}` }, 400);
   const v = b.videoKey ? getVideo(b.projectId, String(b.videoKey)) : null;
-  if (b.videoKey && !v) return c.json({ error: "Không tìm thấy video" }, 404);
+  if (b.videoKey && !v && b.kind !== "write-script") return c.json({ error: "Không tìm thấy video" }, 404);
   if (b.sceneId && !v?.data.scenes.some((s) => s.id === b.sceneId)) return c.json({ error: "Không tìm thấy cảnh" }, 404);
   if (["revise", "illustration", "custom-scene"].includes(b.kind) && !b.sceneId) return c.json({ error: "Cần mã cảnh (sceneId)" }, 400);
+  if (b.kind === "analyze-doc" && !getFile(b.projectId, String(b.fileId ?? ""))) return c.json({ error: "Cần mã tài liệu (fileId) của dự án" }, 400);
+  if (b.kind === "write-script" && !b.videoKey) return c.json({ error: "Cần mã video (videoKey)" }, 400);
   if (b.kind === "revise" && !String(b.note ?? "").trim()) return c.json({ error: "Cần nội dung yêu cầu sửa (note)" }, 400);
   if (b.note !== undefined && (typeof b.note !== "string" || b.note.length > 4000)) return c.json({ error: '"note" phải là chuỗi ≤ 4000 ký tự' }, 400);
-  const req = addClaudeRequest({ projectId: b.projectId, videoKey: b.videoKey ?? null, sceneId: b.sceneId ?? null, kind: b.kind as ClaudeRequestKind, note: b.note?.trim() || null });
+  const req = addClaudeRequest({ projectId: b.projectId, videoKey: b.videoKey ?? null, sceneId: b.sceneId ?? null, fileId: b.kind === "analyze-doc" ? String(b.fileId) : null, kind: b.kind as ClaudeRequestKind, note: b.note?.trim() || null });
   // {run: true} (người dùng đã đồng ý) hoặc bật "tự chạy không hỏi" → Claude Code chạy ngay trên máy này
   const run = !req.duplicate && (b.run === true || claudeCodeSettings().auto) ? startClaudeRun() : null;
   return c.json({ ...req, run });
 });
-app.get("/claude-code/requests", (c) => c.json(listClaudeRequests({ status: c.req.query("status"), projectId: c.req.query("projectId"), videoKey: c.req.query("videoKey") })));
+app.get("/claude-code/requests", (c) => c.json(listClaudeRequests({ status: c.req.query("status"), projectId: c.req.query("projectId"), videoKey: c.req.query("videoKey"), fileId: c.req.query("fileId") })));
 app.patch("/claude-code/requests/:rid", async (c) => {
   const id = Number(c.req.param("rid"));
   const b = await c.req.json().catch(() => ({}));
@@ -496,13 +541,13 @@ app.post("/claude-code/settings", async (c) => {
   if (typeof b.auto !== "boolean") return c.json({ error: '"auto" phải là true | false' }, 400);
   return c.json(setClaudeCodeSettings({ auto: b.auto }));
 });
-// Prompt đúng như Claude API nhận (design | illustration | custom | readings | review-readings) – Claude Code làm theo prompt này.
-const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings"];
+// Prompt đúng như Claude API nhận – Claude Code làm theo prompt này. "analyze-doc" dùng fileId (mã tài liệu) thay videoKey.
+const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings", "analyze-doc", "write-script"];
 app.post("/claude-code/prompt", async (c) => {
   const b = await c.req.json().catch(() => ({}));
   if (!PROMPT_KINDS.includes(b.kind)) return c.json({ error: `"kind" phải là ${PROMPT_KINDS.join(" | ")}` }, 400);
   try {
-    return c.json(await claudeCodePrompt(String(b.projectId ?? ""), String(b.videoKey ?? ""), b.kind, b.sceneId, b.note));
+    return c.json(await claudeCodePrompt(String(b.projectId ?? ""), String((b.kind === "analyze-doc" ? b.fileId : b.videoKey) ?? ""), b.kind, b.sceneId, b.note));
   } catch (e) {
     return c.json({ error: (e as Error).message }, 400);
   }

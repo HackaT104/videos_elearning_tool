@@ -7,20 +7,20 @@ import { api } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { Badge, Msg } from "@/components/ui";
 
-export type CcKind = "revise" | "design-video" | "illustration" | "custom-scene" | "fix-readings" | "review-readings" | "agent";
+export type CcKind = "revise" | "design-video" | "illustration" | "custom-scene" | "fix-readings" | "review-readings" | "agent" | "analyze-doc" | "write-script";
 type CcStatus = "pending" | "running" | "done" | "failed" | "cancelled";
-type CcReq = { id: number; project_id: string; video_key: string | null; scene_id: string | null; kind: CcKind; note: string | null; status: CcStatus; message: string | null; created_at: string };
+type CcReq = { id: number; project_id: string; video_key: string | null; scene_id: string | null; file_id: string | null; kind: CcKind; note: string | null; status: CcStatus; message: string | null; created_at: string };
 type RunStart = { started: boolean; queued?: boolean; reason?: string } | null;
 export type Runner = {
   installed: boolean; bin: string | null; version: string | null; loggedIn: boolean | null; running: boolean; currentRequestIds: number[];
   lastLog: string[]; lastError: string | null; lastResult: "done" | "failed" | null; logFile: string | null; auto: boolean;
   install: { running: boolean; log: string[]; error: string | null; done: boolean }; platform: string;
 };
-export type CcInput = { pid: string; kind: CcKind; videoKey?: string; sceneId?: string; note?: string };
+export type CcInput = { pid: string; kind: CcKind; videoKey?: string; sceneId?: string; fileId?: string; note?: string };
 
 export const CC_PROMPT = "Xử lý các yêu cầu đang chờ của Course Video Studio";
-const KIND: Record<CcKind, string> = { revise: "Sửa cảnh", "design-video": "Thiết kế lại cảnh", illustration: "Vẽ minh hoạ", "custom-scene": "Cảnh tùy biến", "fix-readings": "Sửa cách đọc", "review-readings": "Rà soát cách đọc", agent: "Làm trọn video" };
-const WHAT: Record<CcKind, string> = { revise: "sửa cảnh theo yêu cầu của bạn", "design-video": "thiết kế lại các cảnh", illustration: "vẽ hình minh hoạ", "custom-scene": "viết mã cảnh tùy biến", "fix-readings": "sửa cách đọc", "review-readings": "đọc mọi câu và đề xuất cách đọc", agent: "sửa cách đọc, thiết kế cảnh, soát hình rồi render" };
+const KIND: Record<CcKind, string> = { revise: "Sửa cảnh", "design-video": "Thiết kế lại cảnh", illustration: "Vẽ minh hoạ", "custom-scene": "Cảnh tùy biến", "fix-readings": "Sửa cách đọc", "review-readings": "Rà soát cách đọc", agent: "Làm trọn video", "analyze-doc": "Phân tích tài liệu", "write-script": "Viết lại kịch bản" };
+const WHAT: Record<CcKind, string> = { revise: "sửa cảnh theo yêu cầu của bạn", "design-video": "thiết kế lại các cảnh", illustration: "vẽ hình minh hoạ", "custom-scene": "viết mã cảnh tùy biến", "fix-readings": "sửa cách đọc", "review-readings": "đọc mọi câu và đề xuất cách đọc", agent: "sửa cách đọc, thiết kế cảnh, soát hình rồi render", "analyze-doc": "đọc và phân tích tài liệu (phần nào cần video, kịch bản đủ chưa)", "write-script": "viết lại kịch bản theo nội dung bài" };
 const STATUS: Record<CcStatus, readonly [string, "amber" | "blue" | "green" | "red" | "slate"]> = { pending: ["Chờ Claude Code", "amber"], running: ["Claude Code đang làm…", "blue"], done: ["Xong", "green"], failed: ["Lỗi", "red"], cancelled: ["Đã huỷ", "slate"] };
 const ready = (r: Runner | null) => !!r?.installed && r.loggedIn !== false;
 const runMsg = (run: RunStart) => (run?.started ? "Claude Code đang làm trên máy này – trạng thái hiện bên dưới" : run?.queued ? "Đã thêm vào hàng đợi – Claude Code làm ngay sau việc đang chạy" : `Đã gửi vào hàng đợi${run?.reason ? ` (${run.reason})` : ""}`);
@@ -135,7 +135,7 @@ export function useClaudeCode(onDone?: (msg: string) => void) {
   }, []);
   const send = (r: CcInput, run: boolean) =>
     a.run(async () => {
-      const res = await api<{ run: RunStart; duplicate?: boolean; merged?: boolean; status: CcStatus }>("/claude-code/requests", { method: "POST", json: { projectId: r.pid, kind: r.kind, videoKey: r.videoKey, sceneId: r.sceneId, note: r.note, run } });
+      const res = await api<{ run: RunStart; duplicate?: boolean; merged?: boolean; status: CcStatus }>("/claude-code/requests", { method: "POST", json: { projectId: r.pid, kind: r.kind, videoKey: r.videoKey, sceneId: r.sceneId, fileId: r.fileId, note: r.note, run } });
       if (run && noAsk) await api("/claude-code/settings", { method: "POST", json: { auto: true } });
       setReq(null);
       const m = res.duplicate
@@ -191,17 +191,17 @@ export function useClaudeCode(onDone?: (msg: string) => void) {
 }
 
 /** Nút giao một việc AI cho Claude Code (luôn có; nút chính khi không có Claude API). */
-export function ClaudeCodeButton({ pid, kind, videoKey, sceneId, note, what, label = "Gửi cho Claude Code", primary, disabled, title, onSent }: {
-  pid: string; kind: CcKind; videoKey?: string; sceneId?: string; note?: string; what?: string; label?: string; primary?: boolean; disabled?: boolean; title?: string; onSent?: () => void;
+export function ClaudeCodeButton({ pid, kind, videoKey, sceneId, fileId, note, what, label = "Gửi cho Claude Code", primary, disabled, title, onSent }: {
+  pid: string; kind: CcKind; videoKey?: string; sceneId?: string; fileId?: string; note?: string; what?: string; label?: string; primary?: boolean; disabled?: boolean; title?: string; onSent?: () => void;
 }) {
   const cc = useClaudeCode(() => onSent?.());
   // đã có việc giống hệt đang chờ/đang làm → khoá nút (riêng "sửa cảnh" vẫn gửi được: nội dung mới được gộp vào việc đang chờ)
-  const q = new URLSearchParams({ projectId: pid, status: "pending,running", ...(videoKey ? { videoKey } : {}) });
+  const q = new URLSearchParams({ projectId: pid, status: "pending,running", ...(videoKey ? { videoKey } : {}), ...(fileId ? { fileId } : {}) });
   const act = useApi<CcReq[]>(`/claude-code/requests?${q}`, 4000);
-  const busy = kind !== "revise" ? act.data?.find((r) => r.kind === kind && (r.video_key ?? undefined) === videoKey && (r.scene_id ?? undefined) === sceneId) : undefined;
+  const busy = kind !== "revise" ? act.data?.find((r) => r.kind === kind && (r.video_key ?? undefined) === videoKey && (r.scene_id ?? undefined) === sceneId && (r.file_id ?? undefined) === fileId) : undefined;
   return (
     <>
-      <button type="button" className={`btn ${primary && !busy ? "btn-primary" : ""}`} disabled={disabled || !!busy} title={busy ? "Việc này đã được giao cho Claude Code – xem trạng thái bên dưới" : title ?? "Claude Code (gói Claude đã đăng ký, không tốn phí API) làm việc này trên máy này"} onClick={() => cc.ask({ pid, kind, videoKey, sceneId, note, what })}>{busy ? STATUS[busy.status][0] : label}</button>
+      <button type="button" className={`btn ${primary && !busy ? "btn-primary" : ""}`} disabled={disabled || !!busy} title={busy ? "Việc này đã được giao cho Claude Code – xem trạng thái bên dưới" : title ?? "Claude Code (gói Claude đã đăng ký, không tốn phí API) làm việc này trên máy này"} onClick={() => cc.ask({ pid, kind, videoKey, sceneId, fileId, note, what })}>{busy ? STATUS[busy.status][0] : label}</button>
       {cc.dialog}
       {cc.msg && !cc.msg.ok && !cc.dialog && <Msg msg={cc.msg} />}
     </>
@@ -246,10 +246,11 @@ export function ClaudeCodeLog({ lines, max = 6 }: { lines: string[]; max?: numbe
 }
 
 /** Yêu cầu đã gửi cho Claude Code (lọc theo video/cảnh/loại) + trạng thái chạy. Không có gì → không hiện. */
-export function ClaudeCodeStatus({ pid, videoKey, sceneId, kinds, limit = 3, howTo = true, log = true }: { pid?: string; videoKey?: string; sceneId?: string; kinds?: CcKind[]; limit?: number; howTo?: boolean; log?: boolean }) {
+export function ClaudeCodeStatus({ pid, videoKey, sceneId, fileId, kinds, limit = 3, howTo = true, log = true }: { pid?: string; videoKey?: string; sceneId?: string; fileId?: string; kinds?: CcKind[]; limit?: number; howTo?: boolean; log?: boolean }) {
   const q = new URLSearchParams();
   if (pid) q.set("projectId", pid);
   if (videoKey) q.set("videoKey", videoKey);
+  if (fileId) q.set("fileId", fileId);
   const { data, reload } = useApi<CcReq[]>(`/claude-code/requests?${q}`, 3000);
   const rows = (data ?? []).filter((r) => (!sceneId || r.scene_id === sceneId) && (!kinds || kinds.includes(r.kind)));
   const open = rows.filter((r) => r.status === "pending" || r.status === "running");
@@ -282,7 +283,7 @@ export function ClaudeCodeStatus({ pid, videoKey, sceneId, kinds, limit = 3, how
             <span className="flex flex-wrap items-center gap-1.5">
               <Badge tone={STATUS[r.status][1]}>{STATUS[r.status][0]}</Badge>
               <span className="font-medium">{KIND[r.kind] ?? r.kind}</span>
-              <span className="num text-soft">{[r.video_key ?? (pid ? "mọi video" : r.project_id), r.scene_id].filter(Boolean).join(" · ")}</span>
+              <span className="num text-soft">{[r.video_key ?? (r.file_id ? "cả tài liệu" : pid ? "mọi video" : r.project_id), r.scene_id].filter(Boolean).join(" · ")}</span>
               {extra.length > 0 && <span className="text-soft">(+{extra.length} lần bấm trùng)</span>}
               {(r.status === "pending" || extra.length > 0) && (
                 <button type="button" className="ml-auto min-h-8 px-1 text-[12px] text-soft underline" disabled={a.busy} onClick={() => cancel(r.status === "pending" ? g.filter((x) => x.status === "pending").map((x) => x.id) : extra.map((x) => x.id))}>

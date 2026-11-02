@@ -85,3 +85,46 @@ describe("trùng tên giữa các cấp độ", async () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 });
+
+describe("bóc tài liệu nội dung module (bài, mục, khối Loại:, lời thoại không nhãn)", async () => {
+  const r = await parseInputFile("Noi_dung_module.docx", load("Noi_dung_module.docx"), { course: "CAR", level: "L1" });
+  const v = r.videos[0];
+  it("chỉ khối Loại: Video là video; không cảnh báo", () => {
+    expect(r.kind).toBe("script");
+    expect(r.videos.map((x) => x.key)).toEqual(["CAR-L1_MO1_U1.1_2"]);
+    expect(r.warnings).toEqual([]);
+  });
+  it("tiêu đề = mục đánh số ngay trước video (bỏ số), mã theo tên file", () => {
+    expect(v.title).toBe("Từ ánh nắng đến dòng điện");
+    expect([v.module, v.unit, v.seq]).toEqual(["MO1", "U1.1", "2"]);
+  });
+  it("đoạn trong ngoặc kép sau mốc cảnh là lời thoại kể cả khi không có nhãn Giọng đọc", () => {
+    expect(v.scenes).toHaveLength(4);
+    expect(v.scenes.map((s) => s.sentences.length)).toEqual([2, 2, 1, 1]);
+    expect(v.scenes[1].sentences.map((x) => x.text)).toEqual(["Bên trong tấm pin, ánh sáng đánh bật các điện tử trong lớp silic.", "Dòng điện tử này tạo ra điện một chiều."]);
+    expect(v.scenes.flatMap((s) => s.sentences.map((x) => x.text)).join(" ")).not.toMatch(/["“”]/);
+  });
+  it('Text: "a" / "b" → hai mục chữ trên màn hình', () => {
+    expect(v.scenes[0].onscreen).toEqual(["Ánh nắng", "Dòng điện"]);
+    expect(v.scenes[1].onscreen).toEqual(["Hiệu ứng quang điện"]);
+    expect(v.scenes[2].onscreen).toEqual(["220 V"]); // "Text lớn:"
+    expect(v.scenes[2].visual).toBe("Mũi tên đi từ tấm pin vào hộp biến tần rồi ra ổ cắm.");
+  });
+  it("Nguồn chỉ là đoạn của nó – không nuốt quiz, tài liệu tham khảo", () => {
+    expect(v.sources).toBe("IEA, Renewables 2024; IRENA (2023).");
+  });
+  it("ngữ cảnh: mục tiêu + bài đọc của chính bài, ≤ 6000 ký tự, không lẫn câu hỏi, tài liệu tham khảo, bài khác", () => {
+    const c = v.context!;
+    expect(c.length).toBeGreaterThan(3000);
+    expect(c.length).toBeLessThanOrEqual(6000);
+    expect(c).toContain("Mô tả được đường đi của năng lượng");
+    expect(c).toContain("Đoạn đọc 24:"); // gần video nhất được giữ trước
+    expect(c).not.toMatch(/Câu 1\.|Tài liệu tham khảo số|Các bước lắp đặt|Đo hướng mái|unit_number|Loại:/);
+  });
+  it("liệt kê các bài (số, tiêu đề, thời lượng, loại phần 2, video)", () => {
+    expect(r.units).toEqual([
+      { number: "1.1", title: "Năng lượng mặt trời và điện mặt trời", duration: "20", sectionType: "video&reading", videos: ["CAR-L1_MO1_U1.1_2"] },
+      { number: "1.2", title: "Lắp đặt hệ thống điện mặt trời mái nhà", duration: "25", sectionType: "video&reading" },
+    ]);
+  });
+});

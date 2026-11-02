@@ -1,4 +1,5 @@
-// Sinh file mẫu cho test & demo: fixtures/Kich_ban_L1.docx (2 video), fixtures/Outline_L2.docx, fixtures/Kich_ban_L2.xlsx
+// Sinh file mẫu cho test & demo: fixtures/Kich_ban_L1.docx (2 video), fixtures/Outline_L2.docx, fixtures/Kich_ban_L2.xlsx,
+// fixtures/Noi_dung_module.docx (tài liệu nội dung module: bài, mục đánh số, khối "Loại: …", video có lời thoại không nhãn)
 import { Document, Packer, Paragraph, HeadingLevel, Table, TableRow, TableCell, TextRun, WidthType } from "docx";
 import ExcelJS from "exceljs";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -101,7 +102,83 @@ async function scriptXlsx() {
   await wb.xlsx.writeFile(join(OUT, "Kich_ban_L2.xlsx"));
 }
 
+/** Tài liệu nội dung module (nội dung giả lập): 2 bài; bài 1 có một video 4 cảnh, chỉ cảnh 1 có nhãn "Giọng đọc". */
+async function moduleDocx() {
+  const reading = (i: number) =>
+    p(`Đoạn đọc ${i}: tấm pin quang điện biến ánh sáng thành điện một chiều nhờ hiệu ứng quang điện trong lớp bán dẫn silic. Hiệu suất tấm pin phụ thuộc nhiệt độ bề mặt, góc nghiêng, bụi bẩn và bóng che; vì vậy khảo sát mái và vệ sinh định kỳ là hai việc quan trọng nhất khi vận hành hệ thống điện mặt trời mái nhà.`);
+  const refs = Array.from({ length: 30 }, (_, i) => bullet(`Tài liệu tham khảo số ${i + 1}: Hướng dẫn kỹ thuật về hệ thống điện mặt trời nối lưới, phần ${i + 1}, bản cập nhật mới nhất của cơ quan chuyên ngành.`));
+  const doc = new Document({
+    sections: [
+      {
+        children: [
+          h("MODULE 1 - ĐIỆN MẶT TRỜI CƠ BẢN", HeadingLevel.HEADING_1),
+          p("Cấp độ: 1 - Cơ bản"),
+          h("MỤC TIÊU MODULE"),
+          bullet("Giải thích được nguyên lý của tấm pin quang điện."),
+          h("Năng lượng mặt trời và điện mặt trời", HeadingLevel.HEADING_1),
+          p("unit_number: 1.1"),
+          p("duration: 20"),
+          p("section_2_type: video&reading"),
+          p("MỤC TIÊU HỌC TẬP"),
+          bullet("Mô tả được đường đi của năng lượng từ ánh nắng đến ổ cắm."),
+          bullet("Nhận diện được các yếu tố làm giảm sản lượng điện."),
+          p("Từ khóa: pin quang điện, biến tần, sản lượng điện."),
+          h("1. Bức xạ mặt trời"),
+          ...Array.from({ length: 24 }, (_, i) => reading(i + 1)),
+          p("Loại: Trích dẫn"),
+          p('"Năng lượng mặt trời là nguồn năng lượng tái tạo dồi dào nhất."'),
+          p("Loại: Ảnh"),
+          p("Tên ảnh: Sơ đồ bức xạ"),
+          p("Tên file ảnh: images/MO1_U1.1_1.png"),
+          p("Bố cục: Sơ đồ ngang 16:9, mặt trời ở góc trái, ba tia vàng chiếu xuống mái nhà có tấm pin."),
+          p("Nguồn: Ghi chú dựng ảnh nội bộ."),
+          h("2. Từ ánh nắng đến dòng điện"),
+          p("Loại: Video"),
+          p("Tên file: videos/MO1_U1.1_2.mp4"),
+          p("SCRIPT VIDEO 2:"),
+          p('[0:00 - 0:20] Mở đầu: Mái nhà có tấm pin dưới nắng. Text: "Ánh nắng" / "Dòng điện".'),
+          p("Giọng đọc (Voice-over):"),
+          p('"Mỗi ngày, mái nhà nhận một lượng ánh nắng rất lớn. Tấm pin quang điện giúp biến ánh nắng đó thành điện."'),
+          p('[0:20 - 0:50] Tấm pin: Phóng to lớp bán dẫn, các hạt sáng đi vào. Text: "Hiệu ứng quang điện"'),
+          p('"Bên trong tấm pin, ánh sáng đánh bật các điện tử trong lớp silic. Dòng điện tử này tạo ra điện một chiều."'),
+          p('[0:50 - 1:20] Biến tần: Mũi tên đi từ tấm pin vào hộp biến tần rồi ra ổ cắm. Text lớn: "220 V".'),
+          p('"Biến tần đổi điện một chiều thành điện xoay chiều 220 V. Nhờ vậy thiết bị trong nhà dùng được ngay."'),
+          p("[1:20 - 1:40] Kết: Sơ đồ ba ô nối mũi tên: Ánh nắng → Tấm pin → Biến tần."),
+          p('"Hãy nhớ chuỗi ba bước: ánh nắng, tấm pin, biến tần."'),
+          p("Nguồn: IEA, Renewables 2024; IRENA (2023)."),
+          p("Loại: Quiz"),
+          p("Câu 1. Thiết bị nào đổi điện một chiều thành điện xoay chiều?"),
+          p("Loại: Trắc nghiệm"),
+          bullet("[x] Biến tần"),
+          bullet("Tấm pin"),
+          h("Nguồn tham khảo"),
+          p("Loại: Tài liệu tham khảo"),
+          ...refs,
+          p("Loại: Tổng kết"),
+          p("Bài này trình bày đường đi của năng lượng từ ánh nắng đến ổ cắm."),
+          h("Lắp đặt hệ thống điện mặt trời mái nhà", HeadingLevel.HEADING_1),
+          p("unit_number: 1.2"),
+          p("duration: 25"),
+          p("section_2_type: video&reading"),
+          p("MỤC TIÊU HỌC TẬP"),
+          bullet("Liệt kê được các bước lắp đặt hệ thống mái nhà."),
+          h("1. Các bước lắp đặt"),
+          p("Quy trình gồm khảo sát mái, thiết kế, lắp khung, lắp tấm pin, đấu nối biến tần và nghiệm thu."),
+          p("Loại: Bảng"),
+          table([
+            ["Bước", "Việc chính"],
+            ["Khảo sát", "Đo hướng mái và bóng che"],
+            ["Nghiệm thu", "Đo thông số và bàn giao"],
+          ]),
+        ],
+      },
+    ],
+  });
+  writeFileSync(join(OUT, "Noi_dung_module.docx"), await Packer.toBuffer(doc));
+}
+
 await scriptDocx();
+await moduleDocx();
 await outlineDocx();
 await scriptXlsx();
 console.log("Đã tạo fixtures trong", OUT);

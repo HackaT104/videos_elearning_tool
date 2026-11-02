@@ -2,9 +2,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { useAction } from "@/lib/hooks";
+import { useAction, useApi } from "@/lib/hooks";
 import { useProject } from "@/lib/project";
 import { Badge, Msg, PageHead } from "@/components/ui";
+import { DocAnalysis } from "@/components/doc-plan";
 
 const FIELDS: [string, string][] = [["code", "Mã video"], ["title", "Tiêu đề"], ["scene", "Cảnh"], ["start", "Bắt đầu"], ["end", "Kết thúc"], ["visual", "Mô tả hình"], ["onscreen", "Chữ trên màn hình"], ["vo", "Lời thoại"], ["notes", "Ghi chú"]];
 type Sheet = { sheet: string; headers: string[]; auto: Record<string, number>; missing: string[] };
@@ -18,6 +19,7 @@ export default function Nguon() {
   const [maps, setMaps] = useState<Record<string, Record<string, number>>>({});
   const [results, setResults] = useState<any[]>([]);
   const a = useAction();
+  const meta = useApi<{ ai: boolean }>("/meta");
 
   const addFiles = async (list: FileList | File[]) => {
     const fs = [...list].filter((f) => /\.(docx|xlsx)$/i.test(f.name));
@@ -112,13 +114,14 @@ export default function Nguon() {
           ))}
         </div>
       )}
+      {results.filter((r) => r.fileId && /\.docx$/i.test(r.name)).map((r) => <DocAnalysis key={r.fileId} pid={project!.id} fileId={r.fileId} ai={!!meta.data?.ai} />)}
       <div className="card">
         <h2 className="mb-2 font-semibold">Tài liệu đã tải</h2>
         <table className="tbl">
           <thead><tr><th>File</th><th>Cấp độ</th><th>Loại</th><th>Video</th><th>Thời điểm</th></tr></thead>
           <tbody>
             {project!.files.map((f) => (
-              <tr key={f.id}><td>{f.name}</td><td>{f.level}</td><td>{({ script: "Kịch bản", outline: "Dàn ý", topic: "Chủ đề + yêu cầu" } as Record<string, string>)[f.kind] ?? f.kind}</td><td className="text-xs">{f.summary?.videos?.join(", ")}</td><td className="text-xs text-soft">{new Date(f.created_at).toLocaleString("vi-VN")}</td></tr>
+              <tr key={f.id}><td>{f.name}</td><td>{f.level}</td><td>{({ script: "Kịch bản", outline: "Dàn ý", topic: "Chủ đề + yêu cầu" } as Record<string, string>)[f.kind] ?? f.kind}</td><td className="text-xs">{f.summary?.videos?.join(", ")}{f.summary?.plan && <> · <Link className="text-brand underline" href={`/p/${project!.id}/phan-tich`}>Claude đã phân tích</Link></>}</td><td className="text-xs text-soft">{new Date(f.created_at).toLocaleString("vi-VN")}</td></tr>
             ))}
           </tbody>
         </table>
