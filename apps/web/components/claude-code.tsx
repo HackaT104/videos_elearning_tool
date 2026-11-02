@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { Badge, Msg } from "@/components/ui";
 
-export type CcKind = "revise" | "design-video" | "illustration" | "custom-scene" | "fix-readings" | "review-readings" | "agent" | "analyze-doc" | "write-script";
+export type CcKind = "revise" | "design-video" | "illustration" | "custom-scene" | "fix-readings" | "review-readings" | "agent" | "analyze-doc" | "write-script" | "translate-subs";
 type CcStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 type CcReq = { id: number; project_id: string; video_key: string | null; scene_id: string | null; file_id: string | null; kind: CcKind; note: string | null; status: CcStatus; message: string | null; created_at: string };
 type RunStart = { started: boolean; queued?: boolean; reason?: string } | null;
@@ -19,8 +19,8 @@ export type Runner = {
 export type CcInput = { pid: string; kind: CcKind; videoKey?: string; sceneId?: string; fileId?: string; note?: string };
 
 export const CC_PROMPT = "Xử lý các yêu cầu đang chờ của Course Video Studio";
-const KIND: Record<CcKind, string> = { revise: "Sửa cảnh", "design-video": "Thiết kế lại cảnh", illustration: "Vẽ minh hoạ", "custom-scene": "Cảnh tùy biến", "fix-readings": "Sửa cách đọc", "review-readings": "Rà soát cách đọc", agent: "Làm trọn video", "analyze-doc": "Phân tích tài liệu", "write-script": "Viết lại kịch bản" };
-const WHAT: Record<CcKind, string> = { revise: "sửa cảnh theo yêu cầu của bạn", "design-video": "thiết kế lại các cảnh", illustration: "vẽ hình minh hoạ", "custom-scene": "viết mã cảnh tùy biến", "fix-readings": "sửa cách đọc", "review-readings": "đọc mọi câu và đề xuất cách đọc", agent: "sửa cách đọc, thiết kế cảnh, soát hình rồi render", "analyze-doc": "đọc và phân tích tài liệu (phần nào cần video, kịch bản đủ chưa)", "write-script": "viết lại kịch bản theo nội dung bài" };
+const KIND: Record<CcKind, string> = { revise: "Sửa cảnh", "design-video": "Thiết kế lại cảnh", illustration: "Vẽ minh hoạ", "custom-scene": "Cảnh tùy biến", "fix-readings": "Sửa cách đọc", "review-readings": "Rà soát cách đọc", agent: "Làm trọn video", "analyze-doc": "Phân tích tài liệu", "write-script": "Viết lại kịch bản", "translate-subs": "Dịch phụ đề" };
+const WHAT: Record<CcKind, string> = { revise: "sửa cảnh theo yêu cầu của bạn", "design-video": "thiết kế lại các cảnh", illustration: "vẽ hình minh hoạ", "custom-scene": "viết mã cảnh tùy biến", "fix-readings": "sửa cách đọc", "review-readings": "đọc mọi câu và đề xuất cách đọc", agent: "sửa cách đọc, thiết kế cảnh, soát hình rồi render", "analyze-doc": "đọc và phân tích tài liệu (phần nào cần video, kịch bản đủ chưa)", "write-script": "viết lại kịch bản theo nội dung bài", "translate-subs": "dịch phụ đề sang ngôn ngữ đã chọn (giữ đúng số và thuật ngữ)" };
 const STATUS: Record<CcStatus, readonly [string, "amber" | "blue" | "green" | "red" | "slate"]> = { pending: ["Chờ Claude Code", "amber"], running: ["Claude Code đang làm…", "blue"], done: ["Xong", "green"], failed: ["Lỗi", "red"], cancelled: ["Đã huỷ", "slate"] };
 const ready = (r: Runner | null) => !!r?.installed && r.loggedIn !== false;
 const runMsg = (run: RunStart) => (run?.started ? "Claude Code đang làm trên máy này – trạng thái hiện bên dưới" : run?.queued ? "Đã thêm vào hàng đợi – Claude Code làm ngay sau việc đang chạy" : `Đã gửi vào hàng đợi${run?.reason ? ` (${run.reason})` : ""}`);

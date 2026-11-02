@@ -30,6 +30,8 @@ export type Sentence = {
   ttsLocked?: boolean;
   /** Cách đọc Claude đề xuất – chưa áp dụng cho tới khi người dùng chấp nhận. */
   suggest?: { tts: string; reason?: string; glossary?: { term: string; reading: string }[]; by: "ai" | "claude-code" };
+  /** Phụ đề dịch theo mã ngôn ngữ (en, ja…); tiếng Việt = text. */
+  subs?: Record<string, string>;
 };
 
 /** Mốc kích hoạt một phần tử: tại phân số f (0..1) của câu thứ cue trong cảnh. */
@@ -98,6 +100,8 @@ export type Video = {
   context?: string;
   /** Kịch bản do AI viết (từ outline/chủ đề) – phải được duyệt. */
   aiWritten?: boolean;
+  /** Ghi đè riêng video cho phụ đề/logo của dự án (thiếu = theo dự án). */
+  overlay?: { subtitle?: Partial<import("./overlay").SubtitleSettings>; logo?: Partial<import("./overlay").LogoSettings> };
   scenes: Scene[];
 };
 

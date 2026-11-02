@@ -24,6 +24,8 @@ export type RmtProps = {
   sketch: string;
   fonts: RmtFont[];
   scenes: RmtScene[];
+  /** Lớp phủ toàn video (logo + phụ đề gắn cứng), vẽ trên mọi cảnh. */
+  overlay?: RmtScene;
   /** Bật đo bố cục (renderStill cho QA). */
   probe?: boolean;
 };

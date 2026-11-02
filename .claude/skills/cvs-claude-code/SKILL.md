@@ -1,6 +1,6 @@
 ---
 name: cvs-claude-code
-description: Làm phần AI của Course Video Studio bằng Claude Code (gói Claude đã đăng ký) thay cho Claude API – đọc và phân tích tài liệu (phần nào cần video, kịch bản đủ chưa), viết lại kịch bản, thiết kế/thiết kế lại cảnh, sửa một cảnh theo yêu cầu, vẽ hình minh hoạ SVG, viết cảnh tùy biến, sửa / rà soát cách đọc, làm trọn video – qua lệnh `pnpm cvs`. Dùng khi người dùng nhờ thiết kế/sửa/vẽ cho một video của ứng dụng, hoặc nói "xử lý yêu cầu đang chờ (của Course Video Studio)".
+description: Làm phần AI của Course Video Studio bằng Claude Code (gói Claude đã đăng ký) thay cho Claude API – đọc và phân tích tài liệu (phần nào cần video, kịch bản đủ chưa), viết lại kịch bản, thiết kế/thiết kế lại cảnh, sửa một cảnh theo yêu cầu, vẽ hình minh hoạ SVG, viết cảnh tùy biến, sửa / rà soát cách đọc, dịch phụ đề sang ngôn ngữ khác, làm trọn video – qua lệnh `pnpm cvs`. Dùng khi người dùng nhờ thiết kế/sửa/vẽ cho một video của ứng dụng, hoặc nói "xử lý yêu cầu đang chờ (của Course Video Studio)".
 ---
 
 # Claude Code làm AI cho Course Video Studio
@@ -44,6 +44,7 @@ hàng đợi, rồi bạn (Claude Code, chạy trong thư mục dự án) làm v
 | `review-readings` (`video_key` trống = mọi video) | Xem mục **Rà soát cách đọc** bên dưới. Chỉ **đề xuất** (`suggest-reading`), không `set-reading`; không cần `check`/`render`. |
 | `analyze-doc` (có `file_id`) | Xem mục **Phân tích tài liệu** bên dưới. Không cần `check`/`render`. |
 | `write-script` (có `video_key`) | Người dùng chọn "Để Claude viết lại script": `prompt write-script <pid> <key>` (dàn ý + tài liệu nguồn của bài) → JSON `{"title","scenes":[{"title","visual","onscreen","vo","seconds"}],"assumptions"}` → `set-script <pid> <key> <file>`. Kịch bản được đánh dấu "AI viết" – người dùng phải duyệt ở bước Kịch bản. Không cần `check`/`render`. |
+| `translate-subs` (`note` = mã ngôn ngữ, có thể nhiều: `"en ja"`; `video_key` trống = mọi video) | Xem mục **Dịch phụ đề** bên dưới. Không cần `check`/`render`. |
 | `agent` (`video_key` trống = mọi video của dự án) | `fix-readings` → `design-video` (thiết kế lại mọi cảnh, kể cả cảnh `auto`) → `check` + nhìn khung + sửa → `render`. |
 
 Các cảnh có `design.by = "user"` là người dùng tự chỉnh: chỉ thay khi yêu cầu nhắm đúng cảnh đó.
@@ -60,9 +61,22 @@ Các cảnh có `design.by = "user"` là người dùng tự chỉnh: chỉ thay
 - `set-svg <pid> <key> <sid> <file.svg|-> [--brief "…"]` – giữ các tham số khác của cảnh illustration. SVG được lọc (`sanitizeSvg`,
   chế độ illustration) và phải có ≥ 6 phần tử, ≥ 2 nhóm `<g id="part-N">` (`checkIllustration`).
 - `set-custom <pid> <key> <sid> <file|->` – HTML HyperFrames hoặc TSX Remotion theo engine của video; phải qua lint (`customLint`).
+- `set-subs <pid> <key> <lang> <file.json|->` – bản dịch phụ đề `{"translations":[{"id","text"}]}` (việc `translate-subs`).
 - `set-reading <pid> <key> <sid> <idx> <cách đọc…>` – khoá câu như sửa tay ở bước Chuẩn hoá cách đọc.
 - `suggest-reading <pid> <key> <sid> <idx> <cách đọc…> [--reason "…"] [--glossary "HSE=hát ét ét;PPE=pê pê e"]` – lưu **đề xuất**
   (by `claude-code`); cách đọc chỉ đổi khi người dùng bấm *Chấp nhận* (khi đó câu bị khoá và thuật ngữ mới vào bảng thuật ngữ của dự án).
+
+## Dịch phụ đề (`translate-subs`)
+
+Phụ đề tiếng Việt lấy nguyên lời thoại hiển thị; bạn dịch sang ngôn ngữ trong `note` (en, ja, ko, zh, fr, de, es, th). Không dùng dịch máy khác.
+Với mỗi video (`pnpm -s cvs videos <pid>` khi không có `video_key`) và mỗi ngôn ngữ:
+1. `pnpm -s cvs prompt translate-subs <pid> <key> --lang <mã>` – đúng prompt của đường API (quy tắc dịch, câu đã dịch trước đó để giữ
+   thuật ngữ, các câu còn thiếu kèm `id` = `sN#idx`). Lỗi "đã có phụ đề" = video này xong. `pnpm -s cvs subs <pid> <key> --lang <mã>` xem bản dịch hiện có.
+2. Dịch đúng nghĩa, ngắn gọn hợp phụ đề; **giữ nguyên mọi con số bằng chữ số**, đơn vị, mã tiêu chuẩn, tên riêng; thẩm tra = verification,
+   thẩm định = validation, "TUV NORD"; cùng thuật ngữ dịch giống nhau trong cả khoá.
+3. Ghi JSON `{"translations":[{"id":"s1#0","text":"…"}]}` ra tệp → `pnpm -s cvs set-subs <pid> <key> <mã> <file>`. Máy chủ kiểm id và
+   số (số trong bản dịch phải khớp lời thoại gốc) – lỗi thì sửa đúng câu đó rồi ghi lại.
+4. `pnpm -s cvs done <reqId> "<n> câu đã dịch – mở bước Duyệt, mục Phụ đề để xem/sửa>"`.
 
 ## Phân tích tài liệu (`analyze-doc`)
 

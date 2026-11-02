@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeJsonAtomic, type EngineId, type GlossaryEntry, type StyleId, type Video, type VoiceProvider } from "@cvs/core";
+import { writeJsonAtomic, type EngineId, type GlossaryEntry, type LogoSettings, type StyleId, type SubtitleSettings, type Video, type VoiceProvider } from "@cvs/core";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..", "..");
@@ -47,6 +47,9 @@ export type ProjectSettings = {
   exportDir?: string;
   /** Lần xuất gần nhất. */
   lastExport?: { dir: string; at: string; files: number };
+  /** Phụ đề (trình phát / gắn cứng, ngôn ngữ) và logo phủ lên video – xem @cvs/core overlay. */
+  subtitle?: SubtitleSettings;
+  logo?: LogoSettings;
 };
 
 export type Project = { id: string; name: string; course: string; levels: string[]; settings: ProjectSettings; created_at: string };
@@ -66,7 +69,7 @@ export type VideoRow = {
   qa: unknown | null;
   updated_at: string;
 };
-export type JobKind = "agent" | "produce" | "voice" | "visual" | "render" | "design" | "ai-script" | "theme-preview" | "voice-sample" | "revise" | "reading-review" | "analyze-doc";
+export type JobKind = "agent" | "produce" | "voice" | "visual" | "render" | "design" | "ai-script" | "theme-preview" | "voice-sample" | "revise" | "reading-review" | "analyze-doc" | "translate-subs";
 export type JobStatus = "queued" | "running" | "done" | "failed" | "paused" | "canceled";
 export type Job = {
   id: number;
@@ -280,7 +283,7 @@ export function listVoices(provider?: string) {
 }
 
 // ---------- yêu cầu AI chờ Claude Code (gói Claude đã đăng ký, không dùng API) ----------
-export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "review-readings", "agent", "analyze-doc", "write-script"] as const;
+export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "review-readings", "agent", "analyze-doc", "write-script", "translate-subs"] as const;
 export type ClaudeRequestKind = (typeof CLAUDE_REQUEST_KINDS)[number];
 export type ClaudeRequestStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 export type ClaudeRequest = {
@@ -308,8 +311,10 @@ export function addClaudeRequest(r: { projectId: string; videoKey?: string | nul
     .get(r.projectId, r.kind, r.videoKey ?? null, r.sceneId ?? null, r.fileId ?? null) as ClaudeRequest | undefined;
   if (same) {
     const note = r.note?.trim();
-    if (r.kind === "revise" && note && same.status === "pending" && !(same.note ?? "").includes(note)) {
-      getDb().prepare("UPDATE claude_requests SET note=?, updated_at=? WHERE id=?").run(`${same.note ?? ""}\n• ${note}`.trim(), t, same.id);
+    // dịch phụ đề: gộp các ngôn ngữ ("en ja")
+    const langs = r.kind === "translate-subs";
+    if ((r.kind === "revise" || langs) && note && same.status === "pending" && !(langs ? (same.note ?? "").split(" ").includes(note) : (same.note ?? "").includes(note))) {
+      getDb().prepare("UPDATE claude_requests SET note=?, updated_at=? WHERE id=?").run((langs ? `${same.note ?? ""} ${note}` : `${same.note ?? ""}\n• ${note}`).trim(), t, same.id);
       return { ...getClaudeRequest(same.id)!, merged: true };
     }
     return { ...same, duplicate: true };

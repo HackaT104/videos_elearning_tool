@@ -6,6 +6,7 @@ export * from "./split";
 export * from "./codes";
 export * from "./presets";
 export * from "./timing";
+export * from "./overlay";
 export * from "./factory";
 export * from "./parse/docx";
 export * from "./parse/xlsx";

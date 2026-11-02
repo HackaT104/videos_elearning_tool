@@ -8,9 +8,12 @@ export const config = { runtime: "nodejs", matcher: ["/((?!_next/|icon.svg|manif
 const COOKIE = "cvs_auth";
 const token = (pin: string) => createHash("sha256").update(`cvs:${pin}`).digest("hex");
 
+// Không tin header Host (máy khác tự đặt "Host: localhost" được). Không bật LAN → Next chỉ nghe 127.0.0.1 nên mọi yêu cầu đều từ máy này.
+// Bật LAN → serve.mjs ghi địa chỉ thật của máy gửi vào x-cvs-remote (ghi đè giá trị gửi lên).
 function isLocal(req: NextRequest) {
-  const host = (req.headers.get("host") ?? "").replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  if (process.env.CVS_LAN !== "1") return true;
+  const ip = req.headers.get("x-cvs-remote") ?? "";
+  return ip === "127.0.0.1" || ip === "::1";
 }
 
 export async function middleware(req: NextRequest) {

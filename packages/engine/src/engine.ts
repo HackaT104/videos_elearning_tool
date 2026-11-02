@@ -1,6 +1,6 @@
 // Giao diện chung cho hai bộ dựng (mục 2): RenderEngine { build, preview, render }.
 
-import type { EngineId, Timing, Video, VoiceManifest } from "@cvs/core";
+import type { EngineId, OverlaySettings, Timing, Video, VoiceManifest } from "@cvs/core";
 
 export type BuildInput = {
   video: Video;
@@ -12,6 +12,8 @@ export type BuildInput = {
   workDir: string;
   /** Thư mục ảnh của dự án (mã ảnh = tên file); bộ dựng chép ảnh cảnh dùng vào workDir/assets/img. */
   assetsDir?: string;
+  /** Phụ đề gắn cứng + logo (đã kiểm); trống = không phủ gì. */
+  overlay?: OverlaySettings;
 };
 
 export type BuildResult = { workDir: string; files: string[]; warnings: string[]; assumptions: Record<string, string[]> };

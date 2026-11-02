@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { Msg } from "@/components/ui";
 
-export type ProjectAsset = { id: string; url: string; w: number; h: number; name: string; size: number };
+export type ProjectAsset = { id: string; url: string; w: number; h: number; name: string; size: number; ext?: string };
 
 const MAX = 10 * 1024 * 1024;
 const ACCEPT = "image/png,image/jpeg,image/webp,image/svg+xml";

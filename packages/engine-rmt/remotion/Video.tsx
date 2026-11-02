@@ -29,6 +29,13 @@ export const CourseVideo: React.FC<RmtProps> = (props) => {
           )}
         </Sequence>
       ))}
+      {props.overlay && (
+        <Sequence from={0} durationInFrames={Math.max(1, f(props.total))} name="phụ đề và logo">
+          <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+            <SpecScene scene={props.overlay} />
+          </div>
+        </Sequence>
+      )}
       {props.scenes
         .filter((s) => s.audio)
         .map((s) => (

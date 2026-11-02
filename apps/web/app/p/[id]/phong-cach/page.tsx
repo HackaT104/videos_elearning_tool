@@ -4,6 +4,7 @@ import { api, fileUrl } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead } from "@/components/ui";
+import { OverlaySettings } from "@/components/overlay-settings";
 
 type Theme = { id: string; name: string; description: string; dark: boolean; colors: Record<string, string>; fonts: { display: string; body: string; displayWeight: number } };
 type FontPair = { id: string; name: string; description: string; display: string; body: string; displayWeight: number; generic: string };
@@ -121,6 +122,8 @@ export default function PhongCach() {
       )}
 
       <FontPicker themes={meta.data?.themes} fonts={meta.data?.fonts} styleId={picked ?? s.style} current={s.font ?? "theo-phong-cach"} busy={a.busy} onPick={(font) => setProject({ font })} />
+
+      <OverlaySettings pid={pid} theme={meta.data?.themes.find((t) => t.id === s.style)} bodyFont={meta.data?.fonts.find((f) => f.id === s.font)?.body} frame={shots?.styles.find((x) => x.style === s.style)?.file ?? null} />
 
       <div className="card mb-4">
         <h2 className="mb-2 text-base font-semibold">Bộ dựng cho cả dự án</h2>

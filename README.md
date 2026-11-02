@@ -12,6 +12,29 @@
 
 ---
 
+## Cài đặt cho người dùng (bộ cài)
+
+Cách dễ nhất trên Windows 10/11 64-bit – không cần cài Node.js, Git hay quyền quản trị:
+
+1. Tải **`Course-Video-Studio-Setup-x.y.z.exe`** ở mục Releases của repo (repo riêng tư: người được cấp quyền tải), nhấp đúp để cài.
+   Ứng dụng cài cho riêng người dùng hiện tại vào `%LOCALAPPDATA%\Programs\Course Video Studio`, tạo lối tắt ở Start Menu (và màn hình nền nếu chọn).
+2. Mở **Course Video Studio**: ứng dụng chạy ngầm (không có cửa sổ dòng lệnh) và mở trong cửa sổ riêng của Microsoft Edge (không có Edge → trình duyệt mặc định).
+3. Lần đầu, trang **"Đang chuẩn bị lần đầu"** tự tải Chromium, trình duyệt cho HyperFrames/Remotion, kiểm tra ffmpeg và cài CIT Voice Studio (cần Internet, vài phút).
+4. Thoát hẳn: menu **Ứng dụng → Thoát ứng dụng** (đóng cửa sổ thì ứng dụng vẫn chạy nền; bấm lối tắt để mở lại cửa sổ).
+
+| Nội dung | Vị trí |
+|---|---|
+| Dự án, video, nhật ký (`logs\app.log`), cài đặt | `%LOCALAPPDATA%\Course Video Studio\storage` |
+| Cấu hình tuỳ chọn (giống `.env` ở mục 1) | `%LOCALAPPDATA%\Course Video Studio\storage\.env` (tạo sẵn từ `.env.example` lần đầu chạy) |
+| Trình duyệt tải về, CIT Voice Studio, ZeroTTS | `%LOCALAPPDATA%\Course Video Studio\runtime` |
+
+Cập nhật và gỡ cài **giữ nguyên** dữ liệu; khi gỡ, ứng dụng hỏi có xoá cả dữ liệu không (mặc định: không).
+
+**Cập nhật:** menu **Ứng dụng → Cài đặt & cập nhật** (trang `/cai-dat`) cho thấy phiên bản đang dùng, nút *Kiểm tra ngay*, và tự kiểm tra mỗi ngày một lần khi mở ứng dụng.
+Có bản mới thì thanh trên hiện **"Có bản mới x.y.z – Cập nhật"**: ứng dụng tải bộ cài, kiểm tra SHA-256, cài im lặng rồi tự mở lại.
+Vì repo là **riêng tư**, mỗi máy cần một **mã truy cập GitHub chỉ-đọc** (fine-grained token: chỉ repo này, quyền *Contents: Read-only*) dán vào trang Cài đặt – hướng dẫn tạo mã có ngay trên trang.
+Mã chỉ lưu trên máy (`storage\settings.json`), không hiện lại, không ghi log; có thể đặt bằng biến `CVS_UPDATE_TOKEN` thay vì dán. Đổi repo nguồn bằng `CVS_UPDATE_REPO`.
+
 ## 1. Cài đặt (Windows)
 
 **Cần có**
@@ -27,6 +50,8 @@
 | Python ≥ 3.10 (tùy chọn) | Chỉ cho giọng thứ hai ZeroTTS (ứng dụng tự tạo venv riêng khi bạn bấm Cài). |
 
 **Chạy**
+
+Cách dành cho nhà phát triển (chạy từ mã nguồn); người dùng thường dùng bộ cài ở trên.
 
 1. Tải mã nguồn về (ví dụ `C:\CourseVideoStudio`).
 2. Nhấp đúp **`KHOI_DONG.cmd`**. Lần đầu script sẽ: bật pnpm, tạo `.env` từ `.env.example`, `pnpm install`, `pnpm run cai-dat` (kiểm tra phông tiếng Việt, ffmpeg, tải Chromium cho Playwright + `npx hyperframes browser ensure` + Remotion, kiểm tra CIT, dựng giao diện).
@@ -60,6 +85,8 @@ Không có Windows? Trên macOS/Linux: `pnpm install && pnpm run cai-dat && pnpm
 | `CVS_ZEROTTS_URL` / `CVS_ZEROTTS_PORT` | `http://127.0.0.1:8002` / `8002` | Địa chỉ máy chủ ZeroTTS cục bộ |
 | `CVS_ZEROTTS_PYTHON` | (trống) | Python ≥ 3.10 dùng để tạo venv (trống = `py -3` / `python3` / `python`) |
 | `CVS_ZEROTTS_DIR` | `vendor/zerotts` | Thư mục venv, mô hình, nhật ký `server.log` |
+| `CVS_UPDATE_REPO` | `HackaT104/videos_elearning_tool` | Repo GitHub có bản phát hành (cập nhật bản cài) |
+| `CVS_UPDATE_TOKEN` | (trống) | Mã truy cập chỉ-đọc cho repo riêng tư (ưu tiên mã dán ở trang Cài đặt) |
 
 ---
 
@@ -179,7 +206,22 @@ pnpm mock-cit           # máy chủ CIT GIẢ LẬP ở cổng 8001 (âm thử,
 pnpm e2e                # đầu-cuối không cần giao diện (đặt CVS_TTS_MOCK=1 nếu chưa có CIT)
 pnpm fixtures           # sinh lại file mẫu: 2 video docx, 1 outline, 1 xlsx
 pnpm cvs help           # lệnh cho Claude Code: xem video, lấy prompt, ghi thiết kế/SVG/mã cảnh, check, render, hàng đợi yêu cầu
+pnpm run package:win    # (Windows) dựng bộ cài dist\Course-Video-Studio-Setup-<phiên bản>.exe + dist\latest.json
 ```
+
+### Phát hành bản mới
+
+1. Sửa `"version"` trong `package.json` gốc (ví dụ `0.9.1`), commit, push.
+2. Gắn tag trùng phiên bản và đẩy lên: `git tag v0.9.1 && git push origin v0.9.1`.
+3. GitHub Actions (`.github/workflows/release.yml`, máy `windows-latest`) tự: `pnpm install --frozen-lockfile` → dựng giao diện → gom payload
+   (`packaging/windows/stage.mjs`) → tải Node.js 22 portable (ghim phiên bản + kiểm SHA-256) → Inno Setup (`packaging/windows/CourseVideoStudio.iss`)
+   → đưa `Course-Video-Studio-Setup-0.9.1.exe` + `latest.json` (`{version, url, sha256, notes}`) lên GitHub Releases. Ứng dụng đã cài sẽ thấy bản mới.
+4. Dựng thử không phát hành: tab Actions → *Phát hành bản cài Windows* → *Run workflow* (bỏ chọn *publish*), tải bộ cài ở mục Artifacts.
+
+Dựng trên máy Windows của mình: cài Inno Setup 6 (`choco install innosetup -y`) rồi `pnpm run package:win` (tham số `-Notes "…"` cho ghi chú, `-SkipInstall` để bỏ bước cài thư viện).
+Cấu trúc bản cài: `node\` (Node.js portable) + `app\` (mã + `node_modules`); `packaging/windows/launch.vbs` chạy ẩn `launcher.mjs`, launcher tạo lại các liên kết
+`node_modules` của pnpm (bộ cài không chép được symlink), đặt `CVS_STORAGE`, `PLAYWRIGHT_BROWSERS_PATH`, `CVS_CIT_DIR`… vào thư mục dữ liệu, chạy worker + giao diện,
+chờ `/api/health` rồi mở cửa sổ Edge `--app`.
 
 ---
 

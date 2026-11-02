@@ -3,3 +3,5 @@
 *.docx binary
 *.xlsx binary
 *.woff2 binary
+*.ico binary
+*.vbs binary

@@ -1,0 +1,87 @@
+# Phát hành bản cài Windows: đẩy tag vX.Y.Z (trùng "version" trong package.json) → dựng Course-Video-Studio-Setup-X.Y.Z.exe
+# + latest.json rồi đưa lên GitHub Releases. Chạy tay (workflow_dispatch): dựng thử, tải về ở mục Artifacts;
+# chọn publish = true để phát hành luôn với tag v<version>.
+name: Phát hành bản cài Windows
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Phát hành lên GitHub Releases (tag v<version trong package.json>)"
+        type: boolean
+        default: false
+      notes:
+        description: "Ghi chú phát hành (hiện trong ứng dụng)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Kiểm tra phiên bản
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "v$v") { throw "Tag $env:GITHUB_REF_NAME khác phiên bản trong package.json ($v)" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Cài Inno Setup 6
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Dựng bộ cài
+        shell: pwsh
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: ./scripts/package-win.ps1 -Notes "$env:NOTES"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Course-Video-Studio-Setup-${{ steps.ver.outputs.version }}
+          path: |
+            dist/Course-Video-Studio-Setup-${{ steps.ver.outputs.version }}.exe
+            dist/latest.json
+          retention-days: 14
+
+      - name: Đưa lên GitHub Releases
+        if: github.ref_type == 'tag' || inputs.publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $tag = "v$v"
+          $files = @("dist/Course-Video-Studio-Setup-$v.exe", "dist/latest.json")
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @files --clobber
+          } else {
+            $notes = if ($env:NOTES) { $env:NOTES } else { "Course Video Studio $v" }
+            gh release create $tag @files --title "Course Video Studio $v" --notes "$notes" --target "$env:GITHUB_SHA"
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Không đưa được lên Releases" }

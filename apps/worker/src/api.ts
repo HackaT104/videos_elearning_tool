@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import {
-  checkTts, createNormalizer, DEFAULT_GLOSSARY, LEVEL_PRESETS, readXlsxHeaders, renormalizeVideo, tierOfLevel, EDGE_VOICES,
+  checkTts, createNormalizer, DEFAULT_GLOSSARY, SUB_LANGS, LEVEL_PRESETS, readXlsxHeaders, renormalizeVideo, tierOfLevel, EDGE_VOICES,
   type ColumnMap, type GlossaryEntry, type Video,
 } from "@cvs/core";
 import {
@@ -20,7 +20,9 @@ import {
   acceptAllReadings, resolveReadingSuggestion, setReadingSuggestion, videoVtt, pickFolder, NoGuiError,
   claudeRunnerStatus, startClaudeRun, installClaudeCode, openClaudeLogin, claudeCodeSettings, setClaudeCodeSettings,
   applyDocPlan, docPlanView, saveDocPlan, saveScriptReply,
+  applyOverlayDefaults,
 } from "@cvs/studio";
+import { overlayRoutes, overlayStale } from "./api-overlay";
 import {
   CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, ensureZerottsRunning, installCit, installZerotts, restartCit, restartZerotts,
   ZEROTTS_REPO, ZEROTTS_VOICES, ZerottsClient, zerottsManagerState,
@@ -28,13 +30,47 @@ import {
 import { DEFAULT_FONT_PAIR, FONT_PAIRS, fontFaceUrlCss, fontFilePath, THEMES, THEME_IDS } from "@cvs/themes";
 import { TEMPLATES, ICON_NAMES, KINETIC_PRESETS } from "@cvs/engine";
 import { aiAvailable, aiBlockedReason } from "@cvs/ai";
+import { isLocalRequest, quitApp } from "./desktop";
+import { setupStatus, startSetup } from "./setup";
+import { APP_VERSION, checkForUpdate, installUpdate, saveUpdateSettings, updateStatus } from "./update";
 
 const app = new Hono().basePath("/api");
+overlayRoutes(app);
 
 app.onError((e, c) => c.json({ error: e.message }, 500));
 
 // ---------- hệ thống ----------
-app.get("/health", (c) => c.json({ ok: true, storage: STORAGE, ai: aiAvailable() }));
+app.get("/health", (c) => c.json({ ok: true, storage: STORAGE, ai: aiAvailable(), version: APP_VERSION }));
+
+// ---------- ứng dụng trên máy tính: thoát, chuẩn bị lần đầu, cập nhật ----------
+const remoteAddr = (c: { env: unknown }) => (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress;
+app.post("/app/quit", (c) => {
+  if (!isLocalRequest(remoteAddr(c), c.req.raw.headers)) return c.json({ error: "Chỉ thoát được ngay trên máy tính đang chạy ứng dụng" }, 403);
+  quitApp();
+  return c.json({ ok: true });
+});
+app.get("/setup/status", (c) => c.json(setupStatus()));
+app.post("/setup/run", (c) => {
+  if (!isLocalRequest(remoteAddr(c), c.req.raw.headers)) return c.json({ error: "Chỉ chạy được ngay trên máy tính đang chạy ứng dụng" }, 403);
+  startSetup();
+  return c.json(setupStatus());
+});
+app.get("/update/status", (c) => c.json(updateStatus()));
+app.post("/update/check", async (c) => c.json(await checkForUpdate()));
+app.post("/update/settings", async (c) => {
+  if (!isLocalRequest(remoteAddr(c), c.req.raw.headers)) return c.json({ error: "Chỉ đổi được ngay trên máy tính đang chạy ứng dụng" }, 403);
+  try {
+    saveUpdateSettings(await c.req.json());
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+  return c.json(updateStatus());
+});
+app.post("/update/install", (c) => {
+  if (!isLocalRequest(remoteAddr(c), c.req.raw.headers)) return c.json({ error: "Chỉ cập nhật được ngay trên máy tính đang chạy ứng dụng" }, 403);
+  const r = installUpdate();
+  return r.ok ? c.json(updateStatus()) : c.json({ error: r.error }, 400);
+});
 app.get("/meta", (c) =>
   c.json({
     themes: THEME_IDS.map((id) => ({ id, name: THEMES[id].name, description: THEMES[id].description, dark: THEMES[id].dark, colors: THEMES[id].colors, fonts: { display: THEMES[id].fonts.display.family, body: THEMES[id].fonts.body.family, displayWeight: THEMES[id].fonts.display.weight } })),
@@ -150,7 +186,9 @@ app.get("/projects", (c) => c.json(listProjects().map((p) => ({ ...p, videos: li
 app.post("/projects", async (c) => {
   const b = await c.req.json();
   if (!b.name || !b.course) return c.json({ error: "Cần tên khóa và mã khóa" }, 400);
-  return c.json(createProject(b.name, b.course, b.levels?.length ? b.levels : ["L1"], b.settings ?? {}));
+  const p = createProject(b.name, b.course, b.levels?.length ? b.levels : ["L1"], b.settings ?? {});
+  applyOverlayDefaults(p.id); // phụ đề + logo "dùng cho mọi dự án"
+  return c.json(getProject(p.id));
 });
 app.get("/projects/:id", (c) => {
   const p = getProject(c.req.param("id"));
@@ -338,6 +376,7 @@ const videoSummary = (projectId: string, v: ReturnType<typeof listVideos>[number
     rendered: existsSync(paths.render(projectId, v.key)),
     job,
     assumptions: v.data.scenes.reduce((n, s) => n + (s.assumptions?.length ?? 0), 0),
+    overlayStale: overlayStale(projectId, v),
   };
 };
 app.get("/projects/:id/videos", (c) => {
@@ -447,7 +486,9 @@ app.get("/projects/:id/videos/:key/vtt", (c) => {
   const id = c.req.param("id");
   const v = getVideo(id, c.req.param("key"));
   if (!v) return c.json({ error: "Không tìm thấy video" }, 404);
-  return c.text(videoVtt(id, v.data), 200, { "Content-Type": "text/vtt; charset=utf-8" });
+  const lang = c.req.query("lang") ?? "vi";
+  if (!SUB_LANGS.some((l) => l.code === lang)) return c.json({ error: "Ngôn ngữ phụ đề không hỗ trợ" }, 400);
+  return c.text(videoVtt(id, v.data, lang), 200, { "Content-Type": "text/vtt; charset=utf-8", "Cache-Control": "no-store" });
 });
 app.post("/projects/:id/voice-preset", async (c) => {
   // áp cấu hình giọng/nhịp theo cấp độ (xen kẽ nam/nữ cho Cơ bản)
@@ -514,6 +555,7 @@ app.post("/claude-code/requests", async (c) => {
   if (["revise", "illustration", "custom-scene"].includes(b.kind) && !b.sceneId) return c.json({ error: "Cần mã cảnh (sceneId)" }, 400);
   if (b.kind === "analyze-doc" && !getFile(b.projectId, String(b.fileId ?? ""))) return c.json({ error: "Cần mã tài liệu (fileId) của dự án" }, 400);
   if (b.kind === "write-script" && !b.videoKey) return c.json({ error: "Cần mã video (videoKey)" }, 400);
+  if (b.kind === "translate-subs" && !SUB_LANGS.some((l) => l.code !== "vi" && l.code === b.note)) return c.json({ error: "Cần mã ngôn ngữ đích trong note (en, ja, ko, zh, fr, de, es, th)" }, 400);
   if (b.kind === "revise" && !String(b.note ?? "").trim()) return c.json({ error: "Cần nội dung yêu cầu sửa (note)" }, 400);
   if (b.note !== undefined && (typeof b.note !== "string" || b.note.length > 4000)) return c.json({ error: '"note" phải là chuỗi ≤ 4000 ký tự' }, 400);
   const req = addClaudeRequest({ projectId: b.projectId, videoKey: b.videoKey ?? null, sceneId: b.sceneId ?? null, fileId: b.kind === "analyze-doc" ? String(b.fileId) : null, kind: b.kind as ClaudeRequestKind, note: b.note?.trim() || null });
@@ -542,7 +584,7 @@ app.post("/claude-code/settings", async (c) => {
   return c.json(setClaudeCodeSettings({ auto: b.auto }));
 });
 // Prompt đúng như Claude API nhận – Claude Code làm theo prompt này. "analyze-doc" dùng fileId (mã tài liệu) thay videoKey.
-const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings", "analyze-doc", "write-script"];
+const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings", "analyze-doc", "write-script", "translate-subs"];
 app.post("/claude-code/prompt", async (c) => {
   const b = await c.req.json().catch(() => ({}));
   if (!PROMPT_KINDS.includes(b.kind)) return c.json({ error: `"kind" phải là ${PROMPT_KINDS.join(" | ")}` }, 400);

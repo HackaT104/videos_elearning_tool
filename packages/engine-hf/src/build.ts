@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { sha1, writeFileAtomic, writeJsonAtomic, type Timing, type Video } from "@cvs/core";
-import { assetExists, buildSceneSpec, dropMissingImages, sceneImageRefs, scriptMarkdown, syncSceneImages, type BuildInput, type BuildResult } from "@cvs/engine";
+import { assetExists, buildSceneSpec, dropMissingImages, OVERLAY_ID, overlaySpec, overlayWarnings, sceneImageRefs, scriptMarkdown, syncSceneImages, type BuildInput, type BuildResult } from "@cvs/engine";
 import { baseCss, fontFaceCss, getTheme, groundHtml, SKETCH_FILTER_SVG } from "@cvs/themes";
 import { compileScene, replaceTimingBlock } from "./compile";
 import { lintErrors, lintScene } from "./lint";
@@ -24,7 +24,8 @@ function writeIfChanged(path: string, content: string | Buffer): boolean {
   return true;
 }
 
-export async function indexHtml(video: Video, timing: Timing): Promise<string> {
+/** overlay: lớp phủ toàn video (logo, phụ đề gắn cứng) – host sau mọi cảnh, z-index cao hơn; globalCss nâng dòng "Nguồn". */
+export async function indexHtml(video: Video, timing: Timing, overlay?: { globalCss: string } | null): Promise<string> {
   const theme = getTheme(video.style, video.font);
   const hosts = timing.scenes
     .map(
@@ -32,6 +33,9 @@ export async function indexHtml(video: Video, timing: Timing): Promise<string> {
         `  <div id="${s.id}" class="clip" data-composition-id="${s.id}" data-composition-src="compositions/${s.id}.html" data-start="${s.start}" data-duration="${s.dur}" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>`,
     )
     .join("\n");
+  const over = overlay
+    ? `\n  <div id="${OVERLAY_ID}" class="clip" data-composition-id="${OVERLAY_ID}" data-composition-src="compositions/${OVERLAY_ID}.html" data-start="0" data-duration="${timing.total}" data-track-index="3" data-track-kind="graphics" data-width="1920" data-height="1080"></div>`
+    : "";
   const audios = timing.scenes
     .filter((s) => s.audioFile)
     .map((s) => `  <audio id="vo-${s.id}" class="clip" data-start="${round(s.start + s.lead)}" data-duration="${s.audioDur}" data-track-index="2" data-volume="1" src="assets/vo/${s.audioFile}"></audio>`)
@@ -46,6 +50,7 @@ export async function indexHtml(video: Video, timing: Timing): Promise<string> {
 ${await fontFaceCss(theme)}
 ${baseCss(theme)}
 #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: ${theme.colors.bg}; }
+${overlay ? `#${OVERLAY_ID} { z-index: 10; pointer-events: none; }\n${overlay.globalCss}` : ""}
 </style>
 <script src="assets/lib/gsap.min.js"></script>
 </head>
@@ -53,7 +58,7 @@ ${baseCss(theme)}
 <div id="root" data-composition-id="main" data-start="0" data-duration="${timing.total}" data-width="1920" data-height="1080" data-fps="${timing.fps}">
   ${SKETCH_FILTER_SVG}
   ${groundHtml(theme)}
-${hosts}
+${hosts}${over}
 ${audios}
 </div>
 <script>
@@ -112,12 +117,23 @@ export async function hfBuild(input: BuildInput): Promise<BuildResult> {
     writeIfChanged(file, html);
     files.push(file);
   });
+  // lớp phủ (logo + phụ đề gắn cứng): biên dịch như một cảnh phủ cả video, cùng lint
+  const ov = input.overlay ? overlaySpec(video, timing, input.overlay, (id) => assetExists(input.assetsDir, id)) : null;
+  if (ov) {
+    warnings.push(...ov.warnings);
+    const html = compileScene(ov.spec, ov.T, { scene: ov.scene, videoKey: video.key });
+    for (const issue of lintErrors(lintScene(html, OVERLAY_ID))) warnings.push(`${OVERLAY_ID} lint ${issue.rule}: ${issue.message}`);
+    for (const id of sceneImageRefs(html)) images.add(id);
+    writeIfChanged(join(comp, `${OVERLAY_ID}.html`), html);
+    files.push(join(comp, `${OVERLAY_ID}.html`));
+  }
+  warnings.push(...overlayWarnings(input.overlay, (id) => assetExists(input.assetsDir, id)));
   // ảnh của dự án mà cảnh dùng → assets/img (đường dẫn tương đối, như giọng đọc ở assets/vo)
   for (const id of syncSceneImages(images, input.assetsDir, workDir).missing) warnings.push(`Thiếu ảnh ${id} trong thư mục ảnh của dự án`);
   // xóa cảnh thừa
-  for (const f of readdirSync(comp)) if (!video.scenes.some((s) => `${s.id}.html` === f)) rmSync(join(comp, f), { force: true });
+  for (const f of readdirSync(comp)) if (!video.scenes.some((s) => `${s.id}.html` === f) && !(ov && f === `${OVERLAY_ID}.html`)) rmSync(join(comp, f), { force: true });
 
-  writeIfChanged(join(workDir, "index.html"), await indexHtml(video, timing));
+  writeIfChanged(join(workDir, "index.html"), await indexHtml(video, timing, ov));
   writeJsonAtomic(join(workDir, "timing.json"), timing);
   writeIfChanged(join(workDir, "SCRIPT.md"), scriptMarkdown(video, timing, assumptions));
   files.push(join(workDir, "index.html"), join(workDir, "timing.json"), join(workDir, "SCRIPT.md"));

@@ -152,10 +152,10 @@ li:last-child > .row-link { border-bottom-left-radius: 12px; border-bottom-right
   transform-origin: top right; transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
 }
 @starting-style { .menu[open] .menu-pop { opacity: 0; transform: scale(0.97); } }
-.menu-pop > button { display: block; width: 100%; padding: 8px 10px; border-radius: 8px; text-align: left; font-size: 13px; font-weight: 500; transition: background-color 120ms; }
-.menu-pop > button small { display: block; font-size: 12px; font-weight: 400; color: var(--color-soft); }
+.menu-pop > button, .menu-pop > a { display: block; width: 100%; padding: 8px 10px; border-radius: 8px; text-align: left; font-size: 13px; font-weight: 500; transition: background-color 120ms; }
+.menu-pop > button small, .menu-pop > a small { display: block; font-size: 12px; font-weight: 400; color: var(--color-soft); }
 .menu-pop > button:disabled { opacity: .45; cursor: not-allowed; }
-@media (hover: hover) and (pointer: fine) { .menu-pop > button:not(:disabled):hover { background: var(--color-paper); } }
+@media (hover: hover) and (pointer: fine) { .menu-pop > button:not(:disabled):hover, .menu-pop > a:hover { background: var(--color-paper); } }
 
 /* ---------- Dấu ✓ khi render xong (khoảnh khắc hiếm) ---------- */
 .tick path { stroke-dasharray: 24; stroke-dashoffset: 0; transition: stroke-dashoffset 360ms var(--ease-out); }

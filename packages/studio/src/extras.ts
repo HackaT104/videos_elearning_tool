@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve, sep } from "node:path";
-import { computeTiming, createNormalizer, levelFolder, makeSentences, type OutlineDoc, type StyleId, type Video, type VoiceConfig } from "@cvs/core";
+import { computeTiming, createNormalizer, levelFolder, makeSentences, resolveOverlay, type OutlineDoc, type StyleId, type Video, type VoiceConfig } from "@cvs/core";
 import { aiAvailable, reviseScene, writeOutline, writeScript } from "@cvs/ai";
 import { addFile, getProject, getVideo, glossaryFor, listVideos, paths, setVideoFlags, STORAGE, updateProject, upsertVideo, type ProjectSettings } from "@cvs/db";
 import { effectiveDesign, qaTimes } from "@cvs/engine";
@@ -13,6 +13,7 @@ import { hfBuild, hfPreview, launchBrowser } from "@cvs/engine-hf";
 import { THEME_IDS, THEMES } from "@cvs/themes";
 import { CitClient, ensureZerottsRunning, mockGenerate, probe, synthesizeSample, ZerottsClient } from "@cvs/tts";
 import { currentTiming, makeCustomScene, stepBuild, stepQa, type Ctx } from "./pipeline";
+import { videoVtt } from "./subs";
 
 // ---------- Xuất ----------
 
@@ -38,21 +39,9 @@ export function validateExportDir(input: unknown): string {
   return p;
 }
 
-/** Phụ đề WebVTT của một video theo timing hiện tại. */
-export function videoVtt(projectId: string, video: Video): string {
-  const t = currentTiming(projectId, video);
-  const ts = (s: number) => new Date(Math.max(0, s) * 1000).toISOString().slice(11, 23);
-  const lines = ["WEBVTT", ""];
-  video.scenes.forEach((s, i) => {
-    const st = t.scenes[i];
-    s.sentences.forEach((x, k) => lines.push(`${ts(st.start + st.cues[k])} --> ${ts(st.start + (st.ends[k] ?? st.dur))}`, x.text, ""));
-  });
-  return lines.join("\n");
-}
-
 /**
  * Xuất video đã duyệt: mặc định vào storage/…/out; có `dest` → <dest>/<tên dự án>/Cap_do_N/ (nhớ thư mục cho lần sau).
- * `extras`: kèm phụ đề .vtt và lời thoại .txt cạnh mỗi MP4.
+ * `extras`: kèm phụ đề .vtt (mỗi ngôn ngữ một file <mã>.<ngôn ngữ>.vtt) và lời thoại .txt cạnh mỗi MP4.
  */
 export async function exportProject(projectId: string, opts: { onlyApproved?: boolean; dest?: string; extras?: boolean } = {}): Promise<ExportResult> {
   const project = getProject(projectId);
@@ -81,7 +70,7 @@ export async function exportProject(projectId: string, opts: { onlyApproved?: bo
     copyFileSync(src, dst);
     files.push(dst);
     if (opts.extras) {
-      writeFileSync(join(dir, `${v.key}.vtt`), videoVtt(projectId, v.data), "utf8");
+      for (const lang of resolveOverlay(project.settings, v.data).subtitle.languages) writeFileSync(join(dir, `${v.key}.${lang}.vtt`), videoVtt(projectId, v.data, lang), "utf8");
       const script = v.data.scenes.map((s) => `[${s.id}] ${s.title}\r\n${s.sentences.map((x) => x.text).join(" ")}`).join("\r\n\r\n");
       writeFileSync(join(dir, `${v.key}.txt`), "\ufeff" + `${v.data.title}\r\n\r\n${script}\r\n`, "utf8");
     }

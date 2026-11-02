@@ -3,9 +3,9 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { checkTts, computeTiming, renormalizeVideo, type Timing, type Video } from "@cvs/core";
+import { checkTts, computeTiming, overlayKey, renormalizeVideo, resolveOverlay, type Timing, type Video } from "@cvs/core";
 import { aiAvailable, designScene, reviseScene, visionReview, writeCustomScene } from "@cvs/ai";
-import { getVideo, glossaryFor, paths, setVideoFlags, setVideoQa, upsertVideo, type ProjectSettings } from "@cvs/db";
+import { getProject, getVideo, glossaryFor, paths, setVideoFlags, setVideoQa, upsertVideo, type ProjectSettings } from "@cvs/db";
 import { autoDesign, qaTimes, type BuildInput, type PreviewResult, type RenderEngine } from "@cvs/engine";
 import { contactSheet, createHyperFramesEngine, launchBrowser, lintErrors, lintScene } from "@cvs/engine-hf";
 import { createRemotionEngine, lintRemotionScene } from "@cvs/engine-rmt";
@@ -47,9 +47,20 @@ function load(ctx: Ctx): Video {
   return row.data;
 }
 
+/** Phụ đề/logo hiệu lực của video (cài đặt dự án đọc mới mỗi lần dựng + phần ghi đè của video). */
+export const videoOverlay = (projectId: string, video: Video) => resolveOverlay(getProject(projectId)?.settings, video);
+
 function input(ctx: Pick<Ctx, "projectId">, video: Video, timing: Timing): BuildInput {
   const voDir = paths.vo(ctx.projectId, video.key);
-  return { video, timing, manifest: existsSync(join(voDir, "manifest.json")) ? loadManifest(voDir) : null, voDir, workDir: paths.work(ctx.projectId, video.key, video.engine), assetsDir: paths.assets(ctx.projectId) };
+  return {
+    video,
+    timing,
+    manifest: existsSync(join(voDir, "manifest.json")) ? loadManifest(voDir) : null,
+    voDir,
+    workDir: paths.work(ctx.projectId, video.key, video.engine),
+    assetsDir: paths.assets(ctx.projectId),
+    overlay: videoOverlay(ctx.projectId, video),
+  };
 }
 
 export function currentTiming(projectId: string, video: Video): Timing {
@@ -248,7 +259,8 @@ export async function stepRender(ctx: Ctx) {
     throw new Error("Chưa có giọng thật cho mọi cảnh – chạy bước Giọng trước khi render");
   }
   const out = paths.render(ctx.projectId, video.key);
-  const r = await engine.render(input(ctx, video, timing), out, (p) => {
+  const inp = input(ctx, video, timing);
+  const r = await engine.render(inp, out, (p) => {
     if (ctx.shouldStop()) throw new Stopped();
     ctx.progress("render", p.pct, p.phase + (p.frame ? ` ${p.frame}/${p.total}` : ""));
   });
@@ -259,7 +271,8 @@ export async function stepRender(ctx: Ctx) {
   const audio = await audioQa(out, timing);
   const items = [...prev.items.filter((i) => i.kind !== "audio" && !(i.kind === "render" && /Thời lượng|H\.264/.test(i.message))), ...audio];
   const report = makeReport(video.key, items, prev.assumptions, { sheet: prev.sheet, frames: prev.frames });
-  setVideoQa(ctx.projectId, video.key, { ...report, renderer: r.renderer, rendered: out, renderedAt: new Date().toISOString() });
+  // overlayKey: phụ đề gắn cứng/logo lúc render – đổi cài đặt → bản render cũ (cần "Dựng lại hình")
+  setVideoQa(ctx.projectId, video.key, { ...report, renderer: r.renderer, rendered: out, renderedAt: new Date().toISOString(), overlayKey: overlayKey(inp.overlay!) });
   setVideoFlags(ctx.projectId, video.key, { status: "rendered", approved: false });
   ctx.progress("render", 100);
 }

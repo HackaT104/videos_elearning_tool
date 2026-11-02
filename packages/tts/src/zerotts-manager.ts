@@ -296,7 +296,9 @@ export function startZerottsWatchdog(intervalMs = 30_000) {
 }
 
 export function stopZerotts() {
-  if (child) child.kill();
+  // Windows: dừng cả cây tiến trình (CIT/venv Python có tiến trình con), đồng bộ để chạy được trong trình xử lý "exit"
+  if (child?.pid && process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+  else if (child) child.kill();
   child = null;
   state.managed = false;
   state.running = false;

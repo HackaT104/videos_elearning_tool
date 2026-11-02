@@ -1,7 +1,7 @@
 {
   "name": "course-video-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.9.0",
   "description": "Course Video Studio – tạo video e-learning tự động từ Word/Excel",
   "packageManager": "pnpm@10.28.0",
   "engines": {
@@ -20,7 +20,8 @@
     "gallery": "tsx scripts/gallery.ts",
     "e2e": "tsx scripts/e2e.ts",
     "fixtures": "tsx scripts/make-fixtures.ts",
-    "cvs": "tsx scripts/cvs.ts"
+    "cvs": "tsx scripts/cvs.ts",
+    "package:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-win.ps1"
   },
   "devDependencies": {
     "@cvs/ai": "workspace:*",

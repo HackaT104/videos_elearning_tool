@@ -274,7 +274,7 @@ describe("xuất ra thư mục chọn", () => {
     const dir = join(dest, "Mới tạo", "Dự án_ Chạy_Thử");
     expect(res.dir).toBe(dir);
     expect(res.files).toEqual([join(dir, "Cap_do_1", "CR-L1_V1.mp4")]);
-    expect(existsSync(join(dir, "Cap_do_1", "CR-L1_V1.vtt"))).toBe(true);
+    expect(existsSync(join(dir, "Cap_do_1", "CR-L1_V1.vi.vtt"))).toBe(true);
     expect(readFileSync(join(dir, "Cap_do_1", "CR-L1_V1.txt"), "utf8")).toContain("Xin chào các bạn.");
     const cat = readFileSync(join(dir, "DANH_MUC_VIDEO.txt"), "utf8");
     expect(cat.startsWith("\ufeffMã video\t")).toBe(true);

@@ -2,7 +2,7 @@
 // Nguyên tắc: không bịa số liệu; mọi chữ AI tự thêm phải nằm trong assumptions để người duyệt thấy (màu vàng).
 
 import { readFileSync } from "node:fs";
-import { buildVideo, formatClock, parseVideoFileName, type DocUnit, type OutlineDoc, type ProjectDefaults, type Scene, type SceneDesign, type SceneTiming, type Video } from "@cvs/core";
+import { buildVideo, formatClock, numbersMatch, parseVideoFileName, SUB_LANGS, type DocUnit, type OutlineDoc, type ProjectDefaults, type Scene, type SceneDesign, type SceneTiming, type Video } from "@cvs/core";
 import { DESIGN_TEMPLATE_IDS, ICON_NAMES, sanitizeSvg, TEMPLATES, THEME_COLOR_VARS, validateParams } from "@cvs/engine";
 import { getTheme } from "@cvs/themes";
 import { AiError, ask, askJson } from "./client";
@@ -516,6 +516,64 @@ export async function reviewReadings(items: ReadingItem[], context = "", onBatch
       out.push({ id: s.id, tts, reason: typeof s.reason === "string" && s.reason.trim() ? s.reason.trim() : undefined, glossary: glossary.length ? glossary : undefined });
     }
     onBatch?.(Math.min(i + REVIEW_BATCH, items.length), items.length);
+  }
+  return out;
+}
+
+// ---------------- Dịch phụ đề ----------------
+
+export type SubItem = { id: string; text: string };
+export type SubTranslation = { id: string; text: string };
+/** Số câu tối đa mỗi lần gọi khi dịch phụ đề. */
+export const TRANSLATE_BATCH = 80;
+
+const langName = (code: string) => {
+  const l = SUB_LANGS.find((x) => x.code === code);
+  return l ? `${l.name} (${l.native}, mã ${code})` : code;
+};
+
+/**
+ * Prompt dịch phụ đề (dùng chung Claude API và Claude Code). memory: các câu đã dịch trước đó trong dự án để giữ thuật ngữ thống nhất.
+ */
+export function translateSubsPrompt(items: SubItem[], lang: string, context = "", memory: { text: string; tr: string }[] = []): Prompt {
+  return {
+    system: `Bạn là biên dịch viên phụ đề cho video e-learning kỹ thuật của TUV NORD (an toàn, chất lượng, môi trường, tín chỉ carbon…). Dịch lời thoại tiếng Việt sang ${langName(lang)} làm phụ đề:
+- Dịch đúng nghĩa, văn phong tự nhiên của người bản ngữ trong đào tạo doanh nghiệp; KHÔNG thêm, bớt hay giải thích ý.
+- Giữ NGUYÊN mọi con số bằng chữ số (không viết số thành chữ), đơn vị, phần trăm, ngày, mã tiêu chuẩn (ISO 45001, ISO 14001:2015…), ký hiệu (CO₂e) và tên riêng; dấu thập phân/nghìn theo quy ước của ngôn ngữ đích là được, nhưng giá trị phải giữ nguyên.
+- Thuật ngữ thống nhất trong cả khoá: thẩm tra = verification, thẩm định = validation; viết "TUV NORD"; một thuật ngữ đã dịch thì dùng lại đúng cách dịch đó (xem các câu đã dịch).
+- Ngắn gọn hợp phụ đề: câu gọn, dễ đọc nhanh; không ngắt dòng, không dùng dấu ngoặc kép kiểu Markdown, không thêm chú thích.
+- Bỏ các thẻ điều khiển giọng đọc như [nghỉ 2s] nếu có.`,
+    content: `Ngữ cảnh bài học: ${context.slice(0, 1500)}
+${memory.length ? `\nCác câu đã dịch trước đó trong dự án (giữ thuật ngữ thống nhất):\n${memory.slice(0, 40).map((m) => `- ${m.text} → ${m.tr}`).join("\n")}\n` : ""}
+Các câu cần dịch (JSON, "id" giữ nguyên):
+${JSON.stringify(items, null, 1)}
+
+Trả về DUY NHẤT JSON: {"translations": [{"id": string, "text": string}]} – đủ MỌI câu, đúng thứ tự, "text" là bản dịch ${langName(lang)}.`,
+  };
+}
+
+/** Lỗi của một lượt dịch: thiếu/thừa câu, bản dịch rỗng/quá dài, số khác lời thoại gốc. */
+export function translationErrors(items: SubItem[], out: unknown): string[] {
+  const list = (out as { translations?: unknown })?.translations;
+  if (!Array.isArray(list)) return ['Thiếu "translations" (mảng)'];
+  const errs: string[] = [];
+  for (const it of items) {
+    const t = list.find((x) => x?.id === it.id) as SubTranslation | undefined;
+    if (!t || typeof t.text !== "string" || !t.text.trim()) errs.push(`Thiếu bản dịch câu ${it.id}`);
+    else if (t.text.length > 600) errs.push(`Bản dịch câu ${it.id} quá dài (> 600 ký tự)`);
+    else if (!numbersMatch(it.text, t.text)) errs.push(`Câu ${it.id}: số trong bản dịch khác lời thoại gốc ("${it.text.slice(0, 80)}")`);
+  }
+  return errs.slice(0, 20);
+}
+
+/** Claude dịch phụ đề theo lượt ≤ TRANSLATE_BATCH câu (đường API). */
+export async function translateSubs(items: SubItem[], lang: string, context = "", memory: { text: string; tr: string }[] = [], onBatch?: (done: number, total: number) => void): Promise<SubTranslation[]> {
+  const out: SubTranslation[] = [];
+  for (let i = 0; i < items.length; i += TRANSLATE_BATCH) {
+    const batch = items.slice(i, i + TRANSLATE_BATCH);
+    const r = await askJson<{ translations: SubTranslation[] }>({ ...translateSubsPrompt(batch, lang, context, memory), effort: "medium" }, (v) => translationErrors(batch, v));
+    for (const t of r.translations) if (batch.some((b) => b.id === t.id)) out.push({ id: t.id, text: t.text.trim() });
+    onBatch?.(Math.min(i + TRANSLATE_BATCH, items.length), items.length);
   }
   return out;
 }

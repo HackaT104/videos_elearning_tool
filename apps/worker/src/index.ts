@@ -5,8 +5,9 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { claimNextJob, getDb, getJob, getProject, paths, requeueStale, STORAGE, updateJob, type Job } from "@cvs/db";
 import { startApi } from "./api";
+import { startAutoUpdateCheck } from "./update";
 import { ensureCitRunning, ensureZerottsRunning, installZerotts, startCitWatchdog, startZerottsWatchdog, stopCit, stopZerotts, zerottsInstalled } from "@cvs/tts";
-import { aiAnalyzeDoc, aiReviewReadings, assertStyleChosen, rewriteFromPlan, aiWriteScript, loadSavedClaudeKey, runAgent, JOB_STEPS, makeCustomScene, reviseWithNote, runSteps, Stopped, STEP_LABELS, stylePreview, voiceSamples, type Ctx, type StepName } from "@cvs/studio";
+import { aiAnalyzeDoc, aiReviewReadings, aiTranslateSubs, assertStyleChosen, rewriteFromPlan, aiWriteScript, loadSavedClaudeKey, runAgent, JOB_STEPS, makeCustomScene, reviseWithNote, runSteps, Stopped, STEP_LABELS, stylePreview, voiceSamples, type Ctx, type StepName } from "@cvs/studio";
 
 const MAX = Number(process.env.CVS_WORKER_CONCURRENCY ?? 4);
 const MAX_RENDER = Number(process.env.CVS_RENDER_CONCURRENCY ?? 1);
@@ -102,6 +103,9 @@ async function run(job: Job) {
       case "reading-review":
         result = await aiReviewReadings(ctx, job.video_key);
         break;
+      case "translate-subs":
+        result = await aiTranslateSubs(ctx, job.video_key, String(job.payload?.lang ?? ""), job.payload?.all === true);
+        break;
       case "voice-sample":
         result = await voiceSamples(job.payload.text, job.payload.voices);
         break;
@@ -141,6 +145,7 @@ async function loop() {
 
 void paths;
 if (process.env.CVS_NO_API !== "1") startApi();
+startAutoUpdateCheck();
 // CIT Voice Studio là thành phần bắt buộc: tự cài (nếu thiếu), tự khởi động và theo dõi.
 if (process.env.CVS_TTS_MOCK !== "1" && process.env.CVS_CIT_MANAGE !== "0") {
   ensureCitRunning({ autoInstall: process.env.CVS_CIT_AUTO_INSTALL !== "0" })

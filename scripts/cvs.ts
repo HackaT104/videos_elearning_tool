@@ -15,6 +15,9 @@ Xem
   readings <pid> [key] [--warn]            Mọi câu (id, lời thoại, cách đọc, cảnh báo, đề xuất đang chờ); --warn: chỉ câu còn cảnh báo
   prompt <design|illustration|custom|readings|review-readings|write-script> <pid> <key> [sid] [--note "..."]
                                            In đúng prompt mà Claude API sẽ nhận cho việc này (làm theo prompt đó)
+  prompt translate-subs <pid> <key> --lang en [--all]
+                                           Prompt dịch phụ đề (chỉ câu còn thiếu bản dịch; --all: dịch lại mọi câu)
+  subs <pid> <key> [--lang en]             Mọi câu (id, lời thoại tiếng Việt, bản dịch đã có) để dịch phụ đề
   files <pid>                              Tài liệu đã tải (mã tài liệu, loại, video, đã phân tích chưa)
   doc <pid> <fileId>                       Claude đọc và phân tích tài liệu: in đúng prompt phân tích (dàn ý tài liệu,
                                            khối video đầy đủ, video máy đã bóc, thư viện template) – trả lời bằng set-plan
@@ -27,6 +30,7 @@ Sửa
   set-plan <pid> <fileId> <json-file|->     Ghi kế hoạch video của tài liệu {"videos":[…],"proposed":[…]} (kiểm như đường API)
   set-script <pid> <key> <json-file|->     Ghi kịch bản viết lại {"title","scenes":[{title,visual,onscreen,vo,seconds}],"assumptions"}
   set-reading <pid> <key> <sid> <idx> <cách đọc...>  Sửa cách đọc một câu (khoá như sửa tay)
+  set-subs <pid> <key> <lang> <json-file|->  Ghi bản dịch phụ đề {"translations":[{"id":"s1#0","text":"..."}]} (kiểm id, số khớp lời thoại)
   suggest-reading <pid> <key> <sid> <idx> <cách đọc...> [--reason "..."] [--glossary "HSE=hát ét ét;PPE=pê pê e"]
                                            Lưu ĐỀ XUẤT cách đọc (người dùng chấp nhận/bỏ qua trong app; không đổi cách đọc)
 
@@ -51,7 +55,7 @@ export type Io = {
   sleep: (ms: number) => Promise<void>;
 };
 
-const VALUE_FLAGS = new Set(["note", "brief", "timeout", "reason", "glossary"]);
+const VALUE_FLAGS = new Set(["note", "brief", "timeout", "reason", "glossary", "lang"]);
 
 export function parseArgs(argv: string[]): { pos: string[]; flags: Record<string, string> } {
   const pos: string[] = [];
@@ -199,8 +203,28 @@ export async function main(argv: string[], io: Io): Promise<number> {
       }
       case "prompt": {
         need(a, 3, "prompt <design|illustration|custom|readings|review-readings> <pid> <key> [sid] [--note \"...\"]");
-        const p = await api.post("/claude-code/prompt", { kind: a[0], projectId: a[1], videoKey: a[2], fileId: a[2], sceneId: a[3], note: flags.note });
+        // dịch phụ đề: note = "<lang> [all]"
+        const note = a[0] === "translate-subs" ? `${flags.lang ?? ""}${flags.all ? " all" : ""}` : flags.note;
+        const p = await api.post("/claude-code/prompt", { kind: a[0], projectId: a[1], videoKey: a[2], fileId: a[2], sceneId: a[3], note });
         io.out(`===== SYSTEM =====\n${p.system}\n\n===== NỘI DUNG =====\n${p.content}`);
+        return 0;
+      }
+      case "subs": {
+        need(a, 2, "subs <pid> <key> [--lang en]");
+        const v = await api.get(vpath(a[0], a[1]));
+        json(io, v.data.scenes.flatMap((s: any) => s.sentences.map((x: any, k: number) => ({ id: `${s.id}#${k}`, text: x.text, ...(flags.lang ? { [flags.lang]: x.subs?.[flags.lang] ?? null } : { subs: x.subs ?? {} }) }))));
+        return 0;
+      }
+      case "set-subs": {
+        need(a, 4, "set-subs <pid> <key> <lang> <json-file|->");
+        let d: any;
+        try {
+          d = JSON.parse(io.readFile(a[3]));
+        } catch (e) {
+          throw new Error(`File JSON không đọc được: ${(e as Error).message}`);
+        }
+        const translations = Array.isArray(d) ? d : d?.translations;
+        json(io, await api.patch(`${vpath(a[0], a[1])}/subs`, { lang: a[2], translations, by: "claude-code" }));
         return 0;
       }
       case "files": {

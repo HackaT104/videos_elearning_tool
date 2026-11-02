@@ -2,7 +2,7 @@
 // tự khởi động cùng worker, theo dõi và bật lại khi bị tắt.
 // Nguồn: https://github.com/Cuongyd196/cit-voice-studio (Releases). Dùng CIT nghĩa là đồng ý Điều khoản sử dụng của CIT.
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -256,7 +256,9 @@ export function startCitWatchdog(intervalMs = 30_000) {
 }
 
 export function stopCit() {
-  if (child) child.kill();
+  // Windows: dừng cả cây tiến trình (CIT/venv Python có tiến trình con), đồng bộ để chạy được trong trình xử lý "exit"
+  if (child?.pid && process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+  else if (child) child.kill();
   child = null;
   state.managed = false;
   state.running = false;

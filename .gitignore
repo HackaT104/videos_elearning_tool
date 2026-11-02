@@ -16,3 +16,4 @@ next-env.d.ts
 *.bundle
 vendor/
 *.tsbuildinfo
+packaging/windows/build/

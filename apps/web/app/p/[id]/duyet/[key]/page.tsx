@@ -7,9 +7,20 @@ import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead, VideoPicker } from "@/components/ui";
 import { ScenePrompt } from "@/components/scene-prompt";
 import { useClaudeCode } from "@/components/claude-code";
+import { CaptionVideo } from "@/components/caption-video";
+import { SubtitleTable } from "@/components/subtitle-table";
+import type { OverlayView } from "@/components/overlay-settings";
 
 type QaItem = { kind: string; severity: string; scene?: string; message: string };
 type Row = { data: any; qa: { ok: boolean; items: QaItem[]; assumptions: Record<string, string[]>; sheet?: string; frames?: { file: string; label?: string; scene?: string }[]; rendered?: string; renderer?: string; renderedAt?: string } | null; approved: boolean; summary: VideoSum; timing: any };
+
+/** Đổi khi lời thoại/bản dịch đổi → trình phát tải lại phụ đề (không phát lại từ đầu). */
+const subsVer = (v: any) => {
+  const s = JSON.stringify(v.scenes.map((x: any) => x.sentences.map((y: any) => [y.text, y.subs])));
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+};
 
 export default function Duyet() {
   const { project } = useProject();
@@ -23,6 +34,7 @@ export default function Duyet() {
   const player = useRef<HTMLVideoElement>(null);
   const a = useAction();
   const claude = useApi<{ available: boolean }>("/claude/status", 15000);
+  const ov = useApi<OverlayView>(`/projects/${pid}/overlay`);
   const cc = useClaudeCode((m) => a.setMsg({ ok: true, text: m }));
   if (!data) return <div>Đang tải…</div>;
   const qa = data.qa;
@@ -65,12 +77,13 @@ export default function Duyet() {
         <div>
           <div className="card mb-4">
             {data.summary.rendered && qa?.rendered ? (
-              <video ref={player} onTimeUpdate={onTime} key={qa.renderedAt} className="w-full rounded-lg bg-black" controls preload="metadata" src={`${fileUrl(qa.rendered)}&t=${qa.renderedAt}`}>
-                <track kind="subtitles" srcLang="vi" label="Tiếng Việt" src={`/api/projects/${pid}/videos/${encodeURIComponent(key)}/vtt`} default />
-              </video>
+              ov.data ? (
+                <CaptionVideo ref={player} onTimeUpdate={onTime} key={qa.renderedAt} ver={subsVer(v)} src={`${fileUrl(qa.rendered)}&t=${qa.renderedAt}`} vtt={`/api/projects/${pid}/videos/${encodeURIComponent(key)}/vtt`} langs={ov.data.langs} sub={ov.data.subtitle} />
+              ) : <div className="aspect-video rounded-lg bg-black" />
             ) : <div className="flex aspect-video items-center justify-center rounded bg-[#e9eeec] text-soft">Chưa render – chạy ở bước 7</div>}
             {qa?.renderer && <div className="mt-1 text-xs text-soft">Bộ dựng: {qa.renderer} · {qa.renderedAt && new Date(qa.renderedAt).toLocaleString("vi-VN")} · <a className="underline" href={fileUrl(qa.rendered!, true)}>Tải MP4</a></div>}
           </div>
+          {ov.data && <SubtitleTable pid={pid} vkey={key} scenes={v.scenes} ov={ov.data} aiAvailable={!!claude.data?.available} onChange={() => { reload(); ov.reload(); }} askClaudeCode={cc.ask} />}
           {qa?.sheet && (
             <div className="card mb-4">
               <h2 className="mb-2 font-semibold">Ảnh ghép khung cuối các cảnh</h2>

@@ -12,3 +12,4 @@ export * from "./script-md";
 export * from "./layout-probe";
 export * from "./svg-sanitize";
 export * from "./assets";
+export * from "./overlay";

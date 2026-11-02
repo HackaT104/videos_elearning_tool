@@ -6,6 +6,7 @@ import "@fontsource/be-vietnam-pro/600.css";
 import "@fontsource/be-vietnam-pro/700.css";
 import "./globals.css";
 import { ClaudeLink } from "@/components/claude-link";
+import { AppMenu, AppVersion } from "@/components/app-menu";
 
 export const metadata: Metadata = {
   title: "Course Video Studio",
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/thuat-ngu" className="hidden sm:inline">Thuật ngữ</Link>
               <ClaudeLink />
             </nav>
+            <AppMenu />
           </div>
         </header>
         <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-5 sm:py-6">{children}</main>
@@ -37,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <span>
               <span className="font-medium text-ink">Course Video Studio</span> – sản phẩm của Team E-learning, TÜV NORD Việt Nam
             </span>
+            <AppVersion />
             <span>
               Hỗ trợ: <a className="text-brand underline-offset-2 hover:underline" href="mailto:supportelearning@tuvnord.vn">supportelearning@tuvnord.vn</a>
             </span>
