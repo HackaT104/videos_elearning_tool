@@ -233,7 +233,14 @@ export async function stepQa(ctx: Ctx): Promise<QaReport> {
 }
 
 export async function stepRender(ctx: Ctx) {
-  const { video, timing, engine } = await stepBuild(ctx);
+  let { video, timing, engine } = await stepBuild(ctx);
+  if (timing.estimated && process.env.CVS_ALLOW_ESTIMATED !== "1") {
+    // lời thoại / cách đọc / giọng đã đổi sau lần tạo giọng → tạo lại giọng cho đúng các cảnh đã đổi (cảnh khác dùng lại theo hash)
+    const stale = timing.scenes.filter((s) => s.estimated).map((s) => s.id);
+    ctx.log(`Giọng không khớp lời thoại hiện tại ở ${stale.join(", ")} → tạo lại giọng trước khi render\n`);
+    await stepVoice(ctx);
+    ({ video, timing, engine } = await stepBuild(ctx));
+  }
   if (timing.estimated && process.env.CVS_ALLOW_ESTIMATED !== "1") throw new Error("Chưa có giọng thật cho mọi cảnh – chạy bước Giọng trước khi render");
   const out = paths.render(ctx.projectId, video.key);
   const r = await engine.render(input(ctx, video, timing), out, (p) => {
