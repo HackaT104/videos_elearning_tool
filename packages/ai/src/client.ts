@@ -17,6 +17,18 @@ export function claude(): Anthropic {
 /** Gọi khi đổi cách đăng nhập (khoá mới, đăng nhập/đăng xuất tài khoản) để tạo lại client. */
 export function resetClaudeClient() {
   client = null;
+  blocked = null;
+}
+
+/** Tài khoản API hết tiền / khoá sai → tạm coi như chưa có Claude (giao diện chuyển sang đường Claude Code). Tự hết sau 10 phút để nạp tiền xong là dùng lại được. */
+let blocked: { reason: string; until: number } | null = null;
+export function aiBlockedReason(): string | null {
+  if (blocked && Date.now() > blocked.until) blocked = null;
+  return blocked?.reason ?? null;
+}
+function block(reason: string): never {
+  blocked = { reason, until: Date.now() + 10 * 60_000 };
+  throw new AiError(reason);
 }
 
 function hasProfile(): boolean {
@@ -30,6 +42,7 @@ function hasProfile(): boolean {
 
 /** Có thông tin đăng nhập Claude: khoá API, mã truy cập, hoặc hồ sơ đăng nhập tài khoản Anthropic (ant auth login). */
 export function aiAvailable(): boolean {
+  if (aiBlockedReason()) return false;
   return !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || hasProfile());
 }
 
@@ -65,7 +78,9 @@ export async function ask(o: AskOptions): Promise<string> {
       .map((b) => b.text)
       .join("\n");
   } catch (e) {
-    if (e instanceof Anthropic.AuthenticationError) throw new AiError("Khóa ANTHROPIC_API_KEY không hợp lệ – kiểm tra file .env");
+    if (e instanceof Anthropic.AuthenticationError) block("Khoá Claude API không hợp lệ hoặc đã bị thu hồi – vào mục Claude AI để đổi khoá, hoặc dùng Claude Code (gói đã đăng ký)");
+    if (e instanceof Anthropic.APIError && /credit balance/i.test(e.message))
+      block("Tài khoản Claude API đã hết tiền (credit) – nạp thêm ở console.anthropic.com → Billing, hoặc bấm \"Gửi cho Claude Code\" để dùng gói đã đăng ký");
     if (e instanceof Anthropic.RateLimitError) throw new AiError("Claude API đang giới hạn tốc độ – thử lại sau ít phút");
     if (e instanceof Anthropic.APIConnectionError) throw new AiError("Không kết nối được Claude API – kiểm tra mạng");
     if (e instanceof Anthropic.APIError) throw new AiError(`Claude API lỗi ${e.status}: ${e.message}`);
