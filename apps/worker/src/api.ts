@@ -1,7 +1,7 @@
 // API HTTP cho giao diện (Next.js proxy /api/* → đây). Chạy cùng tiến trình worker.
 
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
-import { extname, resolve, sep } from "node:path";
+import { dirname, extname, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -16,7 +16,7 @@ import {
 } from "@cvs/db";
 import {
   AssetError, assetFile, deleteAsset, listAssets, MAX_ASSET_BYTES, saveAsset,
-  applySceneEdit, claudeCodePrompt, archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
+  applySceneEdit, claudeCodePrompt, archiveItems, archiveSnapshots, deleteItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
   acceptAllReadings, resolveReadingSuggestion, setReadingSuggestion, videoVtt, pickFolder, NoGuiError,
   claudeRunnerStatus, startClaudeRun, installClaudeCode, openClaudeLogin, claudeCodeSettings, setClaudeCodeSettings,
 } from "@cvs/studio";
@@ -131,7 +131,7 @@ app.post("/open-folder", async (c) => {
   const exported = projectId ? getProject(String(projectId))?.settings.lastExport?.dir : undefined;
   if (!(p === STORAGE || p.startsWith(STORAGE + sep) || (exported && p === resolve(exported)))) return c.json({ error: "Đường dẫn ngoài thư mục lưu trữ" }, 400);
   if (!existsSync(p)) return c.json({ error: "Thư mục chưa có – hãy xuất trước" }, 404);
-  openFolder(p);
+  openFolder(statSync(p).isDirectory() ? p : dirname(p));
   return c.json({ ok: true });
 });
 // Hộp chọn thư mục của hệ điều hành trên máy chạy worker (Windows/macOS/Linux có giao diện). Không có → {error, noGui} để web cho gõ đường dẫn.
@@ -539,6 +539,12 @@ app.post("/projects/:id/cleanup", async (c) => {
   const { paths: ps } = await c.req.json();
   return c.json({ archivedTo: archiveItems(c.req.param("id"), ps) });
 });
+app.post("/projects/:id/cleanup/delete", async (c) => {
+  const { paths: ps } = await c.req.json();
+  if (!Array.isArray(ps)) return c.json({ error: "Thiếu danh sách đường dẫn" }, 400);
+  return c.json({ deleted: deleteItems(c.req.param("id"), ps) });
+});
+app.get("/projects/:id/cleanup/archive", (c) => c.json({ dir: paths.archive(c.req.param("id")), project: paths.project(c.req.param("id")), items: archiveSnapshots(c.req.param("id")) }));
 
 // ---------- tệp trong thư mục lưu trữ (video, ảnh, giọng) ----------
 const MIME: Record<string, string> = { ".mp4": "video/mp4", ".png": "image/png", ".mp3": "audio/mpeg", ".json": "application/json", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".html": "text/html; charset=utf-8" };

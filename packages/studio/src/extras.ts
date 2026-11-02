@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve, sep } from "node:path";
 import { computeTiming, createNormalizer, levelFolder, makeSentences, type OutlineDoc, type StyleId, type Video, type VoiceConfig } from "@cvs/core";
@@ -209,6 +209,27 @@ export function archiveItems(projectId: string, pathsToMove: string[]): string {
     renameSync(p, target);
   }
   return dest;
+}
+
+/** Xoá hẳn (không vào _luu_tru) – chỉ trong thư mục dự án; được xoá cả bản đã lưu trữ. */
+export function deleteItems(projectId: string, pathsToDelete: string[]): number {
+  const root = paths.project(projectId);
+  let n = 0;
+  for (const p of pathsToDelete) {
+    if (typeof p !== "string" || !resolve(p).startsWith(root + sep) || !existsSync(p)) continue;
+    rmSync(p, { recursive: true, force: true });
+    n++;
+  }
+  return n;
+}
+
+/** Các lần đã chuyển vào _luu_tru (mới nhất trước). */
+export function archiveSnapshots(projectId: string): CleanupItem[] {
+  const dir = paths.archive(projectId);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .map((name) => ({ path: join(dir, name), label: `Lưu trữ lúc ${name.replace("T", " ").replace(/-(\d\d)-(\d\d)$/, ":$1:$2")}`, bytes: dirSize(join(dir, name)) }))
+    .sort((a, b) => b.path.localeCompare(a.path));
 }
 
 // ---------- Nghe thử giọng ----------
