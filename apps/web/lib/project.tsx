@@ -6,7 +6,7 @@ export type Project = {
   name: string;
   course: string;
   levels: string[];
-  settings: { style: string; engine: "hyperframes" | "remotion"; provider: "cit" | "edge" | "zerotts"; aiDesign: boolean; aiVision: boolean; hfRenderer: string; styleConfirmed?: boolean; font?: string; cit?: { temperature?: number; seed?: number | null; useDict?: boolean } };
+  settings: { style: string; engine: "hyperframes" | "remotion"; provider: "cit" | "edge" | "zerotts"; aiDesign: boolean; aiVision: boolean; hfRenderer: string; styleConfirmed?: boolean; font?: string; cit?: { temperature?: number; seed?: number | null; useDict?: boolean }; exportDir?: string; lastExport?: { dir: string; at: string; files: number } };
   files: { id: string; name: string; level: string; kind: string; summary: any; created_at: string }[];
   warnings: string[];
   out: string;

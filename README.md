@@ -50,6 +50,8 @@ Không có Windows? Trên macOS/Linux: `pnpm install && pnpm run cai-dat && pnpm
 | `CVS_REMOTION_CONCURRENCY` | `2` | Concurrency của Remotion (khuyến nghị 1–2) |
 | `CVS_REMOTION_BROWSER`, `CVS_CHROMIUM_PATH` | (trống) | Đường dẫn Chrome tùy chọn |
 | `CVS_STORAGE` | `./storage` | Thư mục lưu trữ |
+| `CVS_CLAUDE_BIN` | (trống) | Đường dẫn CLI Claude Code (trống = tự tìm) |
+| `CVS_CLAUDE_TIMEOUT_MIN` | `45` | Thời gian tối đa một lượt Claude Code tự chạy |
 | `CVS_TTS_MOCK` | `0` | `1` = giọng **giả lập** (chỉ để thử luồng khi chưa có CIT) |
 | `PYTHON` | `python` | Python cho Edge TTS |
 | `CVS_ZEROTTS_AUTO_INSTALL` | `0` | `1` = tự cài ZeroTTS khi khởi động/`pnpm run cai-dat` (mặc định chỉ cài khi bấm nút) |
@@ -71,7 +73,7 @@ Không có Windows? Trên macOS/Linux: `pnpm install && pnpm run cai-dat && pnpm
 6. **Phong cách & bộ dựng** – dựng **cùng một khung mẫu theo mọi phong cách** để so sánh; chọn theme và bộ dựng cho dự án hoặc từng video; **"Dựng lại bằng bộ kia"** (giữ giọng và timing).
 7. **Sản xuất** – hàng đợi job, mỗi video có tiến độ riêng: Giọng → Cắt/giãn → Timing → Dựng cảnh → QA → Render; nút **Tạm dừng / Tiếp tục / Thử lại bước lỗi / Chỉ dựng lại hình (giữ giọng) / Chỉ làm lại giọng / Thiết kế lại (AI)**; nhật ký từng job.
 8. **Xem & duyệt** – trình phát có phụ đề, ảnh ghép khung cuối cảnh, báo cáo QA, danh sách "AI tự quyết"; **Duyệt** hoặc **Ghi chú sửa** (ngôn ngữ tự nhiên, AI sửa đúng cảnh đó); nút "AI viết cảnh tùy biến".
-9. **Xuất** – `storage/projects/<id>/out/Cap_do_1/<mã>.mp4` …, kèm `DANH_MUC_VIDEO.txt` (UTF-8 BOM, CRLF: mã, thời lượng, tiêu đề, giọng, phong cách); chỉ video **đã duyệt** (QA chặn xuất nếu không đạt, trừ khi chủ động bỏ qua); nút **Mở thư mục**.
+9. **Xuất** – **Chọn thư mục…** mở hộp chọn thư mục của hệ điều hành trên máy chạy ứng dụng (Windows/macOS; Linux cần zenity/kdialog; không mở được → gõ đường dẫn đầy đủ). Video chép vào `<thư mục chọn>/<tên dự án>/Cap_do_1/<mã>.mp4` … (ứng dụng nhớ thư mục cho lần sau; để trống = `storage/projects/<id>/out/`), kèm `DANH_MUC_VIDEO.txt` (UTF-8 BOM, CRLF: mã, thời lượng, tiêu đề, giọng, phong cách), tuỳ chọn phụ đề `.vtt` + lời thoại `.txt`; chỉ video **đã duyệt** (QA chặn xuất nếu không đạt, trừ khi chủ động bỏ qua); nút **Mở thư mục**. Khi mọi video đã duyệt mà chưa xuất, ứng dụng nhắc *Video đã xong – chọn nơi lưu dự án*.
 10. **Dọn dẹp** – giọng thô/cũ, file tạm, bộ nhớ đệm xem trước, bản render thử; xác nhận trước và **chuyển vào `_luu_tru/<thời điểm>`** thay vì xóa.
 
 ---
@@ -82,12 +84,24 @@ Không có Windows? Trên macOS/Linux: `pnpm install && pnpm run cai-dat && pnpm
 **Không có API** nhưng có gói Claude có kèm Claude Code (Pro, Max, Team…) → việc AI do **Claude Code** làm, không tốn phí API:
 
 1. Mở ứng dụng như thường (`KHOI_DONG.cmd`).
-2. Ở chỗ có việc AI, bấm **Gửi cho Claude Code**: sửa cảnh theo yêu cầu (bước Duyệt), viết cảnh tùy biến, *Để Claude Code làm* / *làm tất cả*,
-   *Thiết kế lại cảnh bằng Claude Code* (bước Sản xuất), *Nhờ Claude Code sửa cách đọc* (bước Chuẩn hoá cách đọc). Yêu cầu vào hàng đợi.
-3. Mở Claude Code **trong thư mục dự án** (thư mục có `KHOI_DONG.cmd`) và dán: `Xử lý các yêu cầu đang chờ của Course Video Studio`.
+2. Lần đầu: trang **Claude AI** → *Claude Code trên máy này* → **Cài Claude Code** (chạy trình cài chính thức
+   `irm https://claude.ai/install.ps1 | iex` trên Windows, `curl -fsSL https://claude.ai/install.sh | bash` trên macOS/Linux; cách khác:
+   `npm install -g @anthropic-ai/claude-code`) rồi **Đăng nhập Claude Code**: ứng dụng mở một cửa sổ dòng lệnh mới chạy `claude`,
+   chọn đăng nhập bằng **tài khoản Claude** (gói Pro/Max…), làm theo trình duyệt, gõ `/exit`, bấm **Kiểm tra lại**.
+3. Nút **Claude Code** luôn có ở chỗ có việc AI (nút chính khi không có API, nút phụ khi có): sửa cảnh theo yêu cầu (bước Duyệt), viết cảnh tùy biến,
+   *Để Claude Code làm* / *làm tất cả*, *Thiết kế lại cảnh bằng Claude Code* (bước Sản xuất), *Claude rà soát cách đọc* (bước Chuẩn hoá cách đọc).
+   Bấm → hộp xác nhận → **Đồng ý, chạy ngay**: ứng dụng tự chạy Claude Code nền trên máy này. Tích *Không hỏi lại* (hoặc bật **Tự chạy không hỏi**
+   ở trang Claude AI) để lần sau chạy luôn. Chưa cài/chưa đăng nhập → hộp hiện các bước trên; yêu cầu vẫn nằm trong hàng đợi.
 4. Claude Code (kỹ năng `.claude/skills/cvs-claude-code`) đọc video, lấy **đúng prompt mà ứng dụng gửi cho API** (cùng quy tắc: không bịa số liệu,
    chữ ≥ 28 px, đồng bộ theo câu, ghi assumptions), ghi thiết kế/hình minh hoạ/mã cảnh qua các bước kiểm của ứng dụng, xem ảnh khung QA để
-   tự soát, render lại rồi đánh dấu xong. Trạng thái (*Chờ Claude Code* → *Xong*) hiện ngay trong ứng dụng; mọi thay đổi hoàn tác được.
+   tự soát, render lại rồi đánh dấu xong. Trạng thái (*Chờ Claude Code* → *Claude Code đang làm…* + vài dòng nhật ký → *Xong* / *Lỗi*) hiện ngay trong ứng dụng; mọi thay đổi hoàn tác được.
+
+Cách chạy tự động: `claude -p --output-format stream-json --verbose --permission-mode dontAsk --strict-mcp-config` trong thư mục ứng dụng, prompt
+gửi qua stdin, chỉ các công cụ Bash/PowerShell (chỉ `pnpm cvs …`), Read/Glob/Grep, Write/Edit (chỉ `storage/claude-code-tmp/`) và Skill – không web,
+không MCP; bỏ biến `ANTHROPIC_API_KEY` để luôn dùng gói đã đăng ký. Mỗi lần một lượt (yêu cầu gửi thêm trong lúc chạy → chạy tiếp ngay sau),
+tối đa 45 phút (`CVS_CLAUDE_TIMEOUT_MIN`), nhật ký đầy đủ ở `storage/logs/claude-code-<thời điểm>.log`. Tìm CLI theo `CVS_CLAUDE_BIN` → `claude` trên PATH →
+`%USERPROFILE%\.local\bin\claude.exe`, `%APPDATA%\npm\claude.cmd` (Windows) / `~/.local/bin/claude`. Vẫn có thể tự mở Claude Code trong thư mục dự án
+và dán `Xử lý các yêu cầu đang chờ của Course Video Studio` (trang Claude AI → *Tự mở Claude Code bằng tay*).
 
 Claude Code điều khiển ứng dụng bằng `pnpm cvs <lệnh>` (gõ `pnpm cvs help` để xem; worker phải đang chạy, địa chỉ đổi bằng `CVS_API`).
 Có thể nhờ trực tiếp, ví dụ "đổi cảnh s2 của video CAR-L1_MO2_U2.2_1 sang so sánh hai cột". Trang **Claude AI** giải thích hai cách.

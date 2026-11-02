@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { useApi } from "@/lib/hooks";
 import { ProjectCtx, type Project } from "@/lib/project";
-import { ErrorBox } from "@/components/ui";
+import { ErrorBox, SaveBanner } from "@/components/ui";
 
 export type Progress = { uploaded: boolean; videos: number; reading: number; styleConfirmed: boolean; style: string; citOk: boolean; rendered: number; approved: number };
 type State = "done" | "warn" | "todo";
@@ -76,6 +76,9 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         </aside>
         <section className="min-w-0">
           <ErrorBox error={error} />
+          {data && !data.settings.lastExport && prog.data && prog.data.videos > 0 && prog.data.approved >= prog.data.videos && !path?.includes("/xuat") && (
+            <SaveBanner><Link className="btn btn-primary" href={`/p/${id}/xuat?chon=1`}>Chọn nơi lưu…</Link></SaveBanner>
+          )}
           {data && children}
           {next && (
             <div className="mt-8 flex items-center justify-between gap-3 border-t border-line pt-4">

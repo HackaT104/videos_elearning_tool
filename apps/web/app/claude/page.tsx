@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { Badge, Msg, PageHead } from "@/components/ui";
-import { ClaudeCodeHowTo, ClaudeCodeStatus } from "@/components/claude-code";
+import { ClaudeCodeHowTo, ClaudeCodeLog, ClaudeCodeSetup, ClaudeCodeStatus, type Runner } from "@/components/claude-code";
 
 type Status = { source: string; label: string; profiles: string[]; antInstalled: boolean; login: { running: boolean; url: string | null; message: string }; model: string; blocked?: string | null; available: boolean };
 
@@ -26,15 +26,11 @@ export default function ClaudePage() {
           </div>
           <div className={`rounded-lg p-3 shadow-[0_0_0_1px_rgb(19_34_43/0.1)] ${data && !data.available ? "bg-brand-tint" : ""}`}>
             <div className="flex flex-wrap items-center gap-1.5 font-medium">Claude Code {data && !data.available && <Badge tone="green">đang dùng</Badge>}</div>
-            <p className="mt-1 text-[13px] text-soft">Dùng <b className="font-medium text-ink">gói Claude đã đăng ký</b> (Pro, Max, Team… có Claude Code), không tốn phí API. Bấm <b className="font-medium text-ink">Gửi cho Claude Code</b> ở cảnh/video, rồi mở Claude Code để nó làm (cần mở Claude Code mỗi lần có việc).</p>
+            <p className="mt-1 text-[13px] text-soft">Dùng <b className="font-medium text-ink">gói Claude đã đăng ký</b> (Pro, Max, Team… có Claude Code), không tốn phí API. Bấm nút <b className="font-medium text-ink">Claude Code</b> ở cảnh/video, đồng ý là ứng dụng tự chạy Claude Code trên máy này.</p>
           </div>
         </div>
-        <div className="mt-4">
-          <ClaudeCodeHowTo />
-          <p className="mt-1.5 text-[13px] text-soft">Claude Code đọc video, làm theo đúng quy tắc của ứng dụng, xem ảnh khung để tự soát, render lại rồi đánh dấu xong; trạng thái hiện ngay trong ứng dụng.</p>
-        </div>
-        <ClaudeCodeStatus limit={5} howTo={false} />
       </div>
+      <RunnerCard />
       <div className="card mb-4">
         <div className="flex flex-wrap items-center gap-2">
           {data?.available ? <Badge tone="green">Đã đăng nhập</Badge> : <Badge tone="amber">Chưa đăng nhập</Badge>}
@@ -66,6 +62,46 @@ export default function ClaudePage() {
         </div>
         <Msg msg={a.msg} />
       </div>
+    </div>
+  );
+}
+
+/** Claude Code trên máy này: cài, đăng nhập, tự chạy không hỏi, chạy ngay, nhật ký. */
+function RunnerCard() {
+  const r = useApi<Runner>("/claude-code/runner", 4000);
+  const a = useAction();
+  const d = r.data;
+  const reload = (refresh?: boolean) => (refresh ? api<Runner>("/claude-code/runner?refresh=1").then(r.setData).catch(() => undefined) : r.reload());
+  return (
+    <div className="card mb-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold">Claude Code trên máy này</h2>
+        {d && (d.running ? <Badge tone="blue">Đang làm…</Badge> : d.installed && d.loggedIn !== false ? <Badge tone="green">Sẵn sàng</Badge> : <Badge tone="amber">{d.installed ? "Chưa đăng nhập" : "Chưa cài"}</Badge>)}
+        {d?.version && <span className="num text-xs text-soft">phiên bản {d.version}</span>}
+      </div>
+      <p className="mt-1 text-sm text-soft">Ứng dụng chạy Claude Code ở chế độ nền trong thư mục ứng dụng, quyền hẹp: chỉ lệnh <code>pnpm cvs</code>, đọc tệp, ghi tệp tạm trong <code>storage/claude-code-tmp</code>; không web, không công cụ khác. Mỗi lần một lượt, tối đa 45 phút.</p>
+      <ClaudeCodeSetup runner={d} reload={reload} />
+      {d && (
+        <div className="mt-4 space-y-3 border-t border-line pt-3">
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1" checked={d.auto} disabled={a.busy} onChange={(e) => { const auto = e.target.checked; a.run(async () => { await api("/claude-code/settings", { method: "POST", json: { auto } }); await r.reload(); }); }} />
+            <span><b className="font-medium">Tự chạy không hỏi</b><span className="block text-[13px] text-soft">Gửi việc cho Claude Code là chạy ngay, không hiện hộp xác nhận.</span></span>
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <button className="btn" disabled={!d.installed || d.running || a.busy} onClick={() => a.run(async () => { const x = await api<{ started: boolean; reason?: string }>("/claude-code/run", { method: "POST" }); await r.reload(); a.setMsg({ ok: true, text: x.started ? "Claude Code đang làm các yêu cầu đang chờ" : (x.reason ?? "") }); })}>{d.running ? "Claude Code đang làm…" : "Chạy ngay các yêu cầu đang chờ"}</button>
+            {d.lastResult && !d.running && <Badge tone={d.lastResult === "done" ? "green" : "red"}>{d.lastResult === "done" ? "Lượt trước: xong" : "Lượt trước: lỗi"}</Badge>}
+          </div>
+          <Msg msg={a.msg} />
+          {d.lastError && !d.running && <p className="text-[13px] text-danger">{d.lastError}</p>}
+          <ClaudeCodeLog lines={d.lastLog} max={12} />
+          {d.logFile && <p className="break-all text-xs text-soft">Nhật ký đầy đủ: <code>{d.logFile}</code></p>}
+        </div>
+      )}
+      <ClaudeCodeStatus limit={5} howTo={false} log={false} />
+      <details className="mt-3 text-sm">
+        <summary className="cursor-pointer text-soft">Tự mở Claude Code bằng tay (cách cũ)</summary>
+        <div className="mt-2"><ClaudeCodeHowTo /></div>
+      </details>
     </div>
   );
 }

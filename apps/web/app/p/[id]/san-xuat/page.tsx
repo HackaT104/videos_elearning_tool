@@ -6,7 +6,7 @@ import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { CitLight } from "@/components/cit";
 import { Badge, Check, Msg, PageHead, Progress, STATUS_LABEL } from "@/components/ui";
-import { ClaudeCodeButton, ClaudeCodeStatus } from "@/components/claude-code";
+import { ClaudeCodeButton, ClaudeCodeStatus, useClaudeCode } from "@/components/claude-code";
 
 // Mỗi video là một làn gồm 6 đoạn clip, theo đúng thứ tự các bước của worker.
 const CLIPS = ["Chuẩn hoá", "Giọng", "Timing", "Dựng cảnh", "QA", "Render"];
@@ -34,8 +34,8 @@ export default function SanXuat() {
   const prog = useApi<{ reading: number; styleConfirmed: boolean; citOk: boolean }>(`/projects/${pid}/progress`, 5000);
   const [ignoreReading, setIgnoreReading] = useState(false);
   const claude = useApi<{ available: boolean }>("/claude/status", 10000);
-  // không có Claude API → các việc AI gửi cho Claude Code (gói đã đăng ký); còn chờ trạng thái thì chưa hiện nút nào
-  const viaCode = claude.data?.available === false;
+  // Claude Code (gói đã đăng ký) luôn có; Claude API chỉ hiện khi đã kết nối
+  const cc = useClaudeCode((m) => a.setMsg({ ok: true, text: m }));
   const todo = vids.data?.filter((v) => v.include && !v.existing) ?? [];
   const pre = prog.data;
   const ready = !!pre && (pre.reading === 0 || ignoreReading) && pre.styleConfirmed && pre.citOk;
@@ -46,14 +46,12 @@ export default function SanXuat() {
     <div>
       <PageHead step={7} title="Sản xuất">
         <CitLight />
-        {viaCode ? (
-          <ClaudeCodeButton pid={pid} kind="agent" label="Để Claude Code làm tất cả" disabled={!todo.length || !pre?.styleConfirmed || !pre?.citOk} title="Claude Code (gói đã đăng ký) sửa cách đọc, thiết kế cảnh, soát hình rồi render" />
-        ) : (
-          <button className="btn" title="Claude tự sửa cách đọc, thiết kế cảnh, soát hình rồi render" disabled={!todo.length || a.busy || !pre?.styleConfirmed || !pre?.citOk || !claude.data?.available} onClick={() => enqueue("agent", todo.filter((v) => !v.job).map((v) => v.key), {}, `Agent Claude đang làm ${todo.length} video`)}>Để Claude làm tất cả</button>
-        )}
+        {claude.data?.available && <button className="btn" title="Claude API tự sửa cách đọc, thiết kế cảnh, soát hình rồi render" disabled={!todo.length || a.busy || !pre?.styleConfirmed || !pre?.citOk} onClick={() => enqueue("agent", todo.filter((v) => !v.job).map((v) => v.key), {}, `Agent Claude đang làm ${todo.length} video`)}>Để Claude làm tất cả</button>}
+        <ClaudeCodeButton pid={pid} kind="agent" label="Để Claude Code làm tất cả" what={`làm trọn ${todo.length} video (sửa cách đọc, thiết kế cảnh, soát hình, render)`} disabled={!todo.length || !pre?.styleConfirmed || !pre?.citOk} title="Claude Code (gói đã đăng ký) sửa cách đọc, thiết kế cảnh, soát hình rồi render" />
         <button className="btn btn-primary" disabled={!todo.length || a.busy || !ready} onClick={() => enqueue("produce", todo.filter((v) => !v.job).map((v) => v.key), payload, `Đã xếp hàng ${todo.length} video`)}>Sản xuất tất cả ({todo.length})</button>
       </PageHead>
-      <Msg msg={a.msg} />
+      <Msg msg={a.msg ?? (cc.msg && !cc.msg.ok ? cc.msg : null)} />
+      {cc.dialog}
       <div className="mb-4"><ClaudeCodeStatus pid={pid} /></div>
       {pre && (
         <div className="card mb-4">
@@ -126,9 +124,8 @@ export default function SanXuat() {
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 {finished && <Link className="btn btn-primary" href={`/p/${pid}/duyet/${encodeURIComponent(v.key)}`}>Xem và duyệt</Link>}
                 {!j && <button className={`btn ${finished ? "" : "btn-primary"}`} disabled={!ready} onClick={() => enqueue("produce", [v.key], payload)}>{finished ? "Sản xuất lại" : "Sản xuất"}</button>}
-                {!j && (viaCode
-                  ? <ClaudeCodeButton pid={pid} kind="agent" videoKey={v.key} label="Để Claude Code làm" disabled={!pre?.styleConfirmed || !pre?.citOk} title="Claude Code (gói đã đăng ký) làm trọn video này" />
-                  : <button className="btn" disabled={!pre?.styleConfirmed || !pre?.citOk || !claude.data?.available} title={claude.data?.available ? "Claude làm trọn video này" : "Đăng nhập Claude trước (mục Claude AI)"} onClick={() => enqueue("agent", [v.key], {}, "Agent Claude đang làm video này")}>Để Claude làm</button>)}
+                {!j && claude.data?.available && <button className="btn" disabled={!pre?.styleConfirmed || !pre?.citOk} title="Claude API làm trọn video này" onClick={() => enqueue("agent", [v.key], {}, "Agent Claude đang làm video này")}>Để Claude làm</button>}
+                {!j && <ClaudeCodeButton pid={pid} kind="agent" videoKey={v.key} label="Để Claude Code làm" disabled={!pre?.styleConfirmed || !pre?.citOk} title="Claude Code (gói đã đăng ký) làm trọn video này" />}
                 {j && j.status !== "paused" && <button className="btn" onClick={() => act(j.id, "pause")}>Tạm dừng</button>}
                 {j?.status === "paused" && <button className="btn" onClick={() => act(j.id, "resume")}>Tiếp tục</button>}
                 {j && <button className="btn" onClick={() => act(j.id, "cancel")}>Huỷ</button>}
@@ -139,9 +136,8 @@ export default function SanXuat() {
                   <div className="menu-pop">
                     <button disabled={!!j} onClick={() => enqueue("voice", [v.key], { forceVoice: true, ignoreReading }, "Đã xếp hàng làm lại giọng")}>Làm lại giọng<small>Giữ hình, đọc lại toàn bộ lời</small></button>
                     <button disabled={!!j} onClick={() => enqueue("visual", [v.key], {}, "Đã xếp hàng dựng lại hình")}>Dựng lại hình<small>Giữ giọng, dựng và render lại</small></button>
-                    {viaCode
-                      ? <button onClick={() => a.run(() => api("/claude-code/requests", { method: "POST", json: { projectId: pid, kind: "design-video", videoKey: v.key } }))}>Thiết kế lại cảnh bằng Claude Code<small>Gửi cho Claude Code (gói đã đăng ký)</small></button>
-                      : <button disabled={!!j} onClick={() => enqueue("visual", [v.key], { redesign: true }, "Đã xếp hàng thiết kế lại bằng AI")}>Thiết kế lại cảnh bằng AI<small>Dùng Claude API</small></button>}
+                    {claude.data?.available && <button disabled={!!j} onClick={() => enqueue("visual", [v.key], { redesign: true }, "Đã xếp hàng thiết kế lại bằng AI")}>Thiết kế lại cảnh bằng AI<small>Dùng Claude API</small></button>}
+                    <button onClick={(e) => { e.currentTarget.closest("details")?.removeAttribute("open"); cc.ask({ pid, kind: "design-video", videoKey: v.key }); }}>Thiết kế lại cảnh bằng Claude Code<small>Gói Claude đã đăng ký, chạy trên máy này</small></button>
                   </div>
                 </details>
               </div>

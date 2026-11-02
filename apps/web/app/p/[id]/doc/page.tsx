@@ -17,7 +17,7 @@ export default function Doc() {
   const pid = project!.id;
   const claude = useApi<{ available: boolean }>("/claude/status", 15000);
   const jobs = useApi<Job[]>(`/projects/${pid}/jobs`, 4000);
-  const ccPending = useApi<unknown[]>(`/claude-code/requests?projectId=${pid}&status=pending`, 5000);
+  const ccPending = useApi<unknown[]>(`/claude-code/requests?projectId=${pid}&status=pending,running`, 5000);
   const job = jobs.data?.find((j) => j.kind === "reading-review") ?? null;
   const reviewing = !!job && ["queued", "running"].includes(job.status);
   // đang chờ Claude (API hoặc Claude Code) → làm mới bảng để đề xuất hiện dần
@@ -48,13 +48,12 @@ export default function Doc() {
   return (
     <div>
       <PageHead step={3} title="Chuẩn hoá cách đọc">
-        {claude.data?.available === false ? (
-          <ClaudeCodeButton pid={pid} kind="review-readings" label="Claude rà soát cách đọc" primary title="Không có Claude API: gửi cho Claude Code (gói đã đăng ký) đọc mọi câu và đề xuất cách đọc" onSent={() => ccPending.reload()} />
-        ) : (
-          <button className="btn btn-primary" disabled={!claude.data || reviewing || a.busy} onClick={review} title="Claude đọc mọi câu và đề xuất cách đọc – bạn duyệt từng đề xuất">
+        {claude.data?.available && (
+          <button className="btn btn-primary" disabled={reviewing || a.busy} onClick={review} title="Claude API đọc mọi câu và đề xuất cách đọc – bạn duyệt từng đề xuất">
             {reviewing ? "Claude đang rà soát…" : "Claude rà soát cách đọc"}
           </button>
         )}
+        <ClaudeCodeButton pid={pid} kind="review-readings" label={claude.data?.available ? "Rà soát bằng Claude Code" : "Claude rà soát cách đọc"} primary={claude.data?.available === false} title="Claude Code (gói đã đăng ký) đọc mọi câu và đề xuất cách đọc – bạn duyệt từng đề xuất" onSent={() => ccPending.reload()} />
         <button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api(`/projects/${pid}/normalize`, { method: "POST", json: {} }); await reload(); }, "Đã chuẩn hóa lại toàn bộ (giữ câu đã sửa tay)")}>Chuẩn hóa lại tất cả</button>
       </PageHead>
       <Msg msg={a.msg} />

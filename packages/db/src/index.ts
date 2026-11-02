@@ -43,6 +43,10 @@ export type ProjectSettings = {
   font?: string;
   /** Tuỳ chọn CIT mặc định cho dự án. */
   cit?: { temperature?: number; seed?: number | null; useDict?: boolean };
+  /** Thư mục người dùng chọn để lưu dự án đã xong (bước Xuất). */
+  exportDir?: string;
+  /** Lần xuất gần nhất. */
+  lastExport?: { dir: string; at: string; files: number };
 };
 
 export type Project = { id: string; name: string; course: string; levels: string[]; settings: ProjectSettings; created_at: string };
@@ -268,7 +272,7 @@ export function listVoices(provider?: string) {
 // ---------- yêu cầu AI chờ Claude Code (gói Claude đã đăng ký, không dùng API) ----------
 export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "review-readings", "agent"] as const;
 export type ClaudeRequestKind = (typeof CLAUDE_REQUEST_KINDS)[number];
-export type ClaudeRequestStatus = "pending" | "done" | "failed";
+export type ClaudeRequestStatus = "pending" | "running" | "done" | "failed";
 export type ClaudeRequest = {
   id: number;
   project_id: string;
@@ -292,12 +296,18 @@ export function getClaudeRequest(id: number): ClaudeRequest | null {
   return (getDb().prepare("SELECT * FROM claude_requests WHERE id=?").get(id) as ClaudeRequest | undefined) ?? null;
 }
 export function listClaudeRequests(f: { status?: string; projectId?: string; videoKey?: string } = {}, limit = 100): ClaudeRequest[] {
-  const cols = { status: f.status, project_id: f.projectId, video_key: f.videoKey };
+  // status có thể là danh sách cách nhau dấu phẩy ("pending,running")
+  const st = f.status?.split(",").filter(Boolean) ?? [];
+  const cols = { project_id: f.projectId, video_key: f.videoKey };
   const used = Object.entries(cols).filter(([, v]) => v);
   const where = used.map(([k]) => `${k}=?`);
-  const vals = used.map(([, v]) => v);
+  const vals: unknown[] = used.map(([, v]) => v);
+  if (st.length) {
+    where.push(`status IN (${st.map(() => "?").join(",")})`);
+    vals.push(...st);
+  }
   // việc đang chờ: cũ trước (làm theo thứ tự gửi); còn lại: mới trước
-  const order = f.status === "pending" ? "id ASC" : "id DESC";
+  const order = st.includes("pending") ? "id ASC" : "id DESC";
   return getDb().prepare(`SELECT * FROM claude_requests ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${order} LIMIT ?`).all(...vals, limit) as ClaudeRequest[];
 }
 export function updateClaudeRequest(id: number, patch: { status: ClaudeRequestStatus; message?: string | null }) {

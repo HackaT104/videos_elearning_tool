@@ -6,6 +6,7 @@ import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead, VideoPicker } from "@/components/ui";
 import { ScenePrompt } from "@/components/scene-prompt";
+import { useClaudeCode } from "@/components/claude-code";
 
 type QaItem = { kind: string; severity: string; scene?: string; message: string };
 type Row = { data: any; qa: { ok: boolean; items: QaItem[]; assumptions: Record<string, string[]>; sheet?: string; frames?: { file: string; label?: string; scene?: string }[]; rendered?: string; renderer?: string; renderedAt?: string } | null; approved: boolean; summary: VideoSum; timing: any };
@@ -22,6 +23,7 @@ export default function Duyet() {
   const player = useRef<HTMLVideoElement>(null);
   const a = useAction();
   const claude = useApi<{ available: boolean }>("/claude/status", 15000);
+  const cc = useClaudeCode((m) => a.setMsg({ ok: true, text: m }));
   if (!data) return <div>Đang tải…</div>;
   const qa = data.qa;
   const v = data.data;
@@ -42,7 +44,7 @@ export default function Duyet() {
   const custom = (sid: string) =>
     claude.data?.available
       ? a.run(() => api(`/projects/${pid}/jobs`, { method: "POST", json: { kind: "ai-script", keys: [key], payload: { custom: true, scene: sid } } }), `AI đang viết mã cảnh tùy biến ${sid} (lint + chạy thử tự động)`)
-      : a.run(() => api("/claude-code/requests", { method: "POST", json: { projectId: pid, kind: "custom-scene", videoKey: key, sceneId: sid } }), `Đã gửi cho Claude Code: viết mã cảnh tùy biến ${sid}`);
+      : cc.ask({ pid, kind: "custom-scene", videoKey: key, sceneId: sid });
   const errors = qa?.items.filter((i) => i.severity === "error") ?? [];
   const warns = qa?.items.filter((i) => i.severity !== "error") ?? [];
   return (
@@ -56,7 +58,8 @@ export default function Duyet() {
         )}
       </PageHead>
       {list.data && <VideoPicker pid={pid} videos={list.data} current={key} base="duyet" />}
-      <Msg msg={a.msg} />
+      <Msg msg={a.msg ?? (cc.msg && !cc.msg.ok ? cc.msg : null)} />
+      {cc.dialog}
       {job && <div className="msg mb-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">{job.kind === "revise" ? "AI đang sửa cảnh" : "Đang chạy"}: {job.message} <span className="num">({Math.round(job.progress)}%)</span></div>}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div>

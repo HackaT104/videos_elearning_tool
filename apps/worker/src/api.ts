@@ -17,7 +17,8 @@ import {
 import {
   AssetError, assetFile, deleteAsset, listAssets, MAX_ASSET_BYTES, saveAsset,
   applySceneEdit, claudeCodePrompt, archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
-  acceptAllReadings, resolveReadingSuggestion, setReadingSuggestion,
+  acceptAllReadings, resolveReadingSuggestion, setReadingSuggestion, videoVtt, pickFolder, NoGuiError,
+  claudeRunnerStatus, startClaudeRun, installClaudeCode, openClaudeLogin, claudeCodeSettings, setClaudeCodeSettings,
 } from "@cvs/studio";
 import {
   CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, ensureZerottsRunning, installCit, installZerotts, restartCit, restartZerotts,
@@ -123,11 +124,24 @@ app.post("/zerotts/install", (c) => {
 });
 app.post("/zerotts/restart", async (c) => c.json({ ok: await restartZerotts() }));
 app.post("/open-folder", async (c) => {
-  const { path } = await c.req.json();
+  const { path, projectId } = await c.req.json().catch(() => ({}));
+  if (typeof path !== "string" || !path) return c.json({ error: "Thiếu đường dẫn" }, 400);
   const p = resolve(path);
-  if (!p.startsWith(STORAGE)) return c.json({ error: "Đường dẫn ngoài thư mục lưu trữ" }, 400);
+  // ngoài storage: chỉ mở thư mục vừa xuất của dự án
+  const exported = projectId ? getProject(String(projectId))?.settings.lastExport?.dir : undefined;
+  if (!(p === STORAGE || p.startsWith(STORAGE + sep) || (exported && p === resolve(exported)))) return c.json({ error: "Đường dẫn ngoài thư mục lưu trữ" }, 400);
+  if (!existsSync(p)) return c.json({ error: "Thư mục chưa có – hãy xuất trước" }, 404);
   openFolder(p);
   return c.json({ ok: true });
+});
+// Hộp chọn thư mục của hệ điều hành trên máy chạy worker (Windows/macOS/Linux có giao diện). Không có → {error, noGui} để web cho gõ đường dẫn.
+app.post("/pick-folder", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  try {
+    return c.json(await pickFolder(typeof b.initial === "string" ? b.initial : undefined));
+  } catch (e) {
+    return c.json({ error: (e as Error).message, noGui: e instanceof NoGuiError }, 400);
+  }
 });
 
 // ---------- dự án ----------
@@ -393,15 +407,9 @@ app.post("/projects/:id/videos/:key/renormalize", (c) => {
 });
 app.get("/projects/:id/videos/:key/vtt", (c) => {
   const id = c.req.param("id");
-  const v = getVideo(id, c.req.param("key"))!;
-  const t = currentTiming(id, v.data);
-  const ts = (s: number) => new Date(Math.max(0, s) * 1000).toISOString().slice(11, 23);
-  const lines = ["WEBVTT", ""];
-  v.data.scenes.forEach((s, i) => {
-    const st = t.scenes[i];
-    s.sentences.forEach((x, k) => lines.push(`${ts(st.start + st.cues[k])} --> ${ts(st.start + (st.ends[k] ?? st.dur))}`, x.text, ""));
-  });
-  return c.text(lines.join("\n"), 200, { "Content-Type": "text/vtt; charset=utf-8" });
+  const v = getVideo(id, c.req.param("key"));
+  if (!v) return c.json({ error: "Không tìm thấy video" }, 404);
+  return c.text(videoVtt(id, v.data), 200, { "Content-Type": "text/vtt; charset=utf-8" });
 });
 app.post("/projects/:id/voice-preset", async (c) => {
   // áp cấu hình giọng/nhịp theo cấp độ (xen kẽ nam/nữ cho Cơ bản)
@@ -463,16 +471,29 @@ app.post("/claude-code/requests", async (c) => {
   if (["revise", "illustration", "custom-scene"].includes(b.kind) && !b.sceneId) return c.json({ error: "Cần mã cảnh (sceneId)" }, 400);
   if (b.kind === "revise" && !String(b.note ?? "").trim()) return c.json({ error: "Cần nội dung yêu cầu sửa (note)" }, 400);
   if (b.note !== undefined && (typeof b.note !== "string" || b.note.length > 4000)) return c.json({ error: '"note" phải là chuỗi ≤ 4000 ký tự' }, 400);
-  return c.json(addClaudeRequest({ projectId: b.projectId, videoKey: b.videoKey ?? null, sceneId: b.sceneId ?? null, kind: b.kind as ClaudeRequestKind, note: b.note?.trim() || null }));
+  const req = addClaudeRequest({ projectId: b.projectId, videoKey: b.videoKey ?? null, sceneId: b.sceneId ?? null, kind: b.kind as ClaudeRequestKind, note: b.note?.trim() || null });
+  // {run: true} (người dùng đã đồng ý) hoặc bật "tự chạy không hỏi" → Claude Code chạy ngay trên máy này
+  const run = b.run === true || claudeCodeSettings().auto ? startClaudeRun() : null;
+  return c.json({ ...req, run });
 });
 app.get("/claude-code/requests", (c) => c.json(listClaudeRequests({ status: c.req.query("status"), projectId: c.req.query("projectId"), videoKey: c.req.query("videoKey") })));
 app.patch("/claude-code/requests/:rid", async (c) => {
   const id = Number(c.req.param("rid"));
   const b = await c.req.json().catch(() => ({}));
   if (!getClaudeRequest(id)) return c.json({ error: "Không có yêu cầu" }, 404);
-  if (!["pending", "done", "failed"].includes(b.status)) return c.json({ error: '"status" phải là done | failed | pending' }, 400);
+  if (!["pending", "running", "done", "failed"].includes(b.status)) return c.json({ error: '"status" phải là done | failed | pending | running' }, 400);
   if (b.message !== undefined && typeof b.message !== "string") return c.json({ error: '"message" phải là chuỗi' }, 400);
   return c.json(updateClaudeRequest(id, { status: b.status, message: b.message?.slice(0, 4000) ?? null }));
+});
+// Tự chạy Claude Code trên máy này (gói Claude đã đăng ký): trạng thái, chạy, cài, đăng nhập, tự chạy không hỏi.
+app.get("/claude-code/runner", async (c) => c.json(await claudeRunnerStatus(c.req.query("refresh") === "1")));
+app.post("/claude-code/run", (c) => c.json(startClaudeRun()));
+app.post("/claude-code/install", (c) => c.json(installClaudeCode()));
+app.post("/claude-code/login", (c) => c.json(openClaudeLogin()));
+app.post("/claude-code/settings", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  if (typeof b.auto !== "boolean") return c.json({ error: '"auto" phải là true | false' }, 400);
+  return c.json(setClaudeCodeSettings({ auto: b.auto }));
 });
 // Prompt đúng như Claude API nhận (design | illustration | custom | readings | review-readings) – Claude Code làm theo prompt này.
 const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings"];
@@ -503,7 +524,16 @@ app.delete("/glossary/:gid", (c) => {
 });
 
 // ---------- xuất & dọn dẹp ----------
-app.post("/projects/:id/export", async (c) => c.json(await exportProject(c.req.param("id"))));
+// {dest?: thư mục người dùng chọn, extras?: kèm phụ đề + lời thoại}
+app.post("/projects/:id/export", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  if (!getProject(c.req.param("id"))) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  try {
+    return c.json(await exportProject(c.req.param("id"), { dest: b.dest === undefined || b.dest === null ? undefined : b.dest, extras: b.extras === true }));
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+});
 app.get("/projects/:id/cleanup", (c) => c.json(cleanupCandidates(c.req.param("id"))));
 app.post("/projects/:id/cleanup", async (c) => {
   const { paths: ps } = await c.req.json();

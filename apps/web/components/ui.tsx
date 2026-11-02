@@ -87,3 +87,17 @@ export function VideoPicker({ pid, videos, current, base }: { pid: string; video
     </div>
   );
 }
+
+/** Lời nhắc khi mọi video đã duyệt mà dự án chưa được lưu ra ngoài. */
+export function SaveBanner({ children }: { children: ReactNode }) {
+  return (
+    <div className="msg mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-brand-tint px-4 py-3 text-brand-dark shadow-[0_0_0_1px_rgb(11_122_92/0.18)]" role="status">
+      <div className="min-w-0">
+        <div className="font-semibold">Video đã xong – chọn nơi lưu dự án</div>
+        <div className="text-[13px]">Chọn một thư mục trên máy (ổ D:, OneDrive, ổ mạng…); ứng dụng chép video theo cấp độ kèm danh mục vào đó.</div>
+      </div>
+      {children}
+    </div>
+  );
+}
+

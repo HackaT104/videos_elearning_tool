@@ -13,7 +13,7 @@ hàng đợi, rồi bạn (Claude Code, chạy trong thư mục dự án) làm v
 
 1. **Ứng dụng đang chạy?** `pnpm -s cvs projects`. Lỗi "Không kết nối được worker" → dừng, bảo người dùng mở ứng dụng bằng
    `KHOI_DONG.cmd` (hoặc `pnpm start`) rồi nhắn lại. Không tự khởi động worker trừ khi người dùng yêu cầu.
-2. **Lấy việc:** `pnpm -s cvs pending` (cũ trước). Người dùng nhờ trực tiếp (không qua hàng đợi) thì làm như một yêu cầu cùng loại, bỏ bước `done`.
+2. **Lấy việc:** `pnpm -s cvs pending` (cũ trước; `status: "running"` = ứng dụng đã tự mở Claude Code để làm việc đó – vẫn là việc của bạn). Người dùng nhờ trực tiếp (không qua hàng đợi) thì làm như một yêu cầu cùng loại, bỏ bước `done`.
 3. Với **mỗi** yêu cầu, theo thứ tự:
    1. `pnpm -s cvs video <pid> <key>` – kịch bản, lời thoại kèm mốc `cue/end` từng câu, thiết kế hiện tại, assumptions, notes.
    2. Đọc kỹ năng `cvs-scene-design` (`.claude/skills/cvs-scene-design/SKILL.md`) trước khi thiết kế.
@@ -71,7 +71,8 @@ Người dùng muốn **tự duyệt** mọi thay đổi: bạn chỉ đề xu�
    (+ `--glossary "cụm=cách đọc"` cho thuật ngữ lặp lại). Cùng một cụm đọc giống nhau trong cả khoá.
 4. `pnpm -s cvs done <reqId> "<n> đề xuất – mở bước Chuẩn hoá cách đọc, tab Đề xuất của Claude để duyệt>"`.
 
-Ghi file tạm vào thư mục scratchpad của phiên, không vào repo.
+Ghi file tạm vào thư mục scratchpad của phiên, không vào repo. Khi ứng dụng tự chạy Claude Code (nút trong app), chỉ được ghi vào
+`storage/claude-code-tmp/` và chỉ được chạy `pnpm cvs …` / `pnpm -s cvs …` (mỗi lệnh riêng, không nối `&&`/`|`): ghi JSON/SVG/mã cảnh ra tệp ở đó rồi truyền đường dẫn cho `set-*`.
 
 ## Quy tắc chất lượng (giống hệt đường API – nguồn: `packages/ai/src/index.ts`)
 

@@ -3,10 +3,11 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, delimiter, isAbsolute, join, resolve, sep } from "node:path";
 import { computeTiming, createNormalizer, levelFolder, makeSentences, type OutlineDoc, type StyleId, type Video, type VoiceConfig } from "@cvs/core";
 import { aiAvailable, reviseScene, writeOutline, writeScript } from "@cvs/ai";
-import { addFile, getProject, getVideo, glossaryFor, listVideos, paths, setVideoFlags, upsertVideo, type ProjectSettings } from "@cvs/db";
+import { addFile, getProject, getVideo, glossaryFor, listVideos, paths, setVideoFlags, STORAGE, updateProject, upsertVideo, type ProjectSettings } from "@cvs/db";
 import { effectiveDesign, qaTimes } from "@cvs/engine";
 import { hfBuild, hfPreview, launchBrowser } from "@cvs/engine-hf";
 import { THEME_IDS, THEMES } from "@cvs/themes";
@@ -17,8 +18,47 @@ import { currentTiming, makeCustomScene, stepBuild, stepQa, type Ctx } from "./p
 
 export type ExportResult = { dir: string; files: string[]; skipped: { key: string; reason: string }[]; catalog: string };
 
-export async function exportProject(projectId: string, opts: { onlyApproved?: boolean } = {}): Promise<ExportResult> {
-  const outDir = paths.out(projectId);
+/** Tên thư mục an toàn trên Windows/macOS/Linux (giữ dấu tiếng Việt). */
+export const safeFolderName = (s: string) => s.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/, "").trim().slice(0, 120) || "Du_an";
+
+/** Kiểm tra thư mục đích người dùng chọn: đường dẫn tuyệt đối, là thư mục (hoặc tạo được), không nằm trong thư mục lưu trữ của ứng dụng. */
+export function validateExportDir(input: unknown): string {
+  if (typeof input !== "string" || !input.trim()) throw new Error("Chưa chọn thư mục lưu");
+  const raw = input.trim();
+  if (!isAbsolute(raw)) throw new Error("Cần đường dẫn đầy đủ, ví dụ D:\\Video khoá học hoặc /home/ban/Video");
+  const p = resolve(raw);
+  const store = resolve(STORAGE);
+  if (p === store || p.startsWith(store + sep) || store.startsWith(p + sep)) throw new Error("Chọn thư mục ngoài thư mục lưu trữ của ứng dụng (storage)");
+  if (existsSync(p) && !statSync(p).isDirectory()) throw new Error("Đường dẫn này là một tệp, không phải thư mục");
+  try {
+    mkdirSync(p, { recursive: true });
+  } catch (e) {
+    throw new Error(`Không tạo được thư mục: ${(e as Error).message}`);
+  }
+  return p;
+}
+
+/** Phụ đề WebVTT của một video theo timing hiện tại. */
+export function videoVtt(projectId: string, video: Video): string {
+  const t = currentTiming(projectId, video);
+  const ts = (s: number) => new Date(Math.max(0, s) * 1000).toISOString().slice(11, 23);
+  const lines = ["WEBVTT", ""];
+  video.scenes.forEach((s, i) => {
+    const st = t.scenes[i];
+    s.sentences.forEach((x, k) => lines.push(`${ts(st.start + st.cues[k])} --> ${ts(st.start + (st.ends[k] ?? st.dur))}`, x.text, ""));
+  });
+  return lines.join("\n");
+}
+
+/**
+ * Xuất video đã duyệt: mặc định vào storage/…/out; có `dest` → <dest>/<tên dự án>/Cap_do_N/ (nhớ thư mục cho lần sau).
+ * `extras`: kèm phụ đề .vtt và lời thoại .txt cạnh mỗi MP4.
+ */
+export async function exportProject(projectId: string, opts: { onlyApproved?: boolean; dest?: string; extras?: boolean } = {}): Promise<ExportResult> {
+  const project = getProject(projectId);
+  if (!project) throw new Error("Không tìm thấy dự án");
+  const dest = opts.dest !== undefined ? validateExportDir(opts.dest) : null;
+  const outDir = dest ? join(dest, safeFolderName(project.name)) : paths.out(projectId);
   mkdirSync(outDir, { recursive: true });
   const files: string[] = [];
   const skipped: ExportResult["skipped"] = [];
@@ -40,6 +80,11 @@ export async function exportProject(projectId: string, opts: { onlyApproved?: bo
     const dst = join(dir, `${v.key}.mp4`);
     copyFileSync(src, dst);
     files.push(dst);
+    if (opts.extras) {
+      writeFileSync(join(dir, `${v.key}.vtt`), videoVtt(projectId, v.data), "utf8");
+      const script = v.data.scenes.map((s) => `[${s.id}] ${s.title}\r\n${s.sentences.map((x) => x.text).join(" ")}`).join("\r\n\r\n");
+      writeFileSync(join(dir, `${v.key}.txt`), "\ufeff" + `${v.data.title}\r\n\r\n${script}\r\n`, "utf8");
+    }
     const info = await probe(dst);
     const s = Math.round(info.duration);
     const voice = `${v.data.voice.provider.toUpperCase()} ${v.data.voice.voiceId} ×${v.data.voice.speed}`;
@@ -47,13 +92,76 @@ export async function exportProject(projectId: string, opts: { onlyApproved?: bo
   }
   // UTF-8 BOM + CRLF để mở đúng trên Windows (Notepad/Excel)
   const catalog = join(outDir, "DANH_MUC_VIDEO.txt");
-  writeFileSync(catalog, "﻿" + rows.join("\r\n") + "\r\n", "utf8");
+  writeFileSync(catalog, "\ufeff" + rows.join("\r\n") + "\r\n", "utf8");
+  updateProject(projectId, { settings: { ...(dest ? { exportDir: dest } : {}), lastExport: { dir: outDir, at: new Date().toISOString(), files: files.length } } });
   return { dir: outDir, files, skipped, catalog };
 }
 
 export function openFolder(dir: string) {
   const cmd = process.platform === "win32" ? "explorer.exe" : process.platform === "darwin" ? "open" : "xdg-open";
-  spawn(cmd, [dir], { detached: true, stdio: "ignore", windowsHide: false }).unref();
+  spawn(cmd, [dir], { detached: true, stdio: "ignore", windowsHide: false }).on("error", () => undefined).unref();
+}
+
+// ---------- Chọn thư mục bằng hộp thoại của hệ điều hành (trên máy chạy worker) ----------
+
+const psQuote = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+/** Lệnh mở hộp chọn thư mục theo hệ điều hành; null = máy không có giao diện đồ hoạ / công cụ chọn. */
+export function pickFolderCommand(platform: NodeJS.Platform = process.platform, env: Record<string, string | undefined> = process.env, has: (exe: string) => boolean = onPath, initial?: string, title = "Chọn nơi lưu dự án"): { cmd: string; args: string[] } | null {
+  if (platform === "win32") {
+    // cửa sổ chủ TopMost để hộp thoại hiện trước trình duyệt; -STA bắt buộc cho WinForms; mã hoá UTF-16 base64 → không lo ngoặc/dấu
+    const ps = [
+      "Add-Type -AssemblyName System.Windows.Forms",
+      "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+      "$o = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false; Opacity = 0; StartPosition = 'CenterScreen' }",
+      "$o.Show(); $o.Activate()",
+      "$d = New-Object System.Windows.Forms.FolderBrowserDialog",
+      `$d.Description = ${psQuote(title)}`,
+      "$d.ShowNewFolderButton = $true",
+      initial ? `$d.SelectedPath = ${psQuote(initial)}` : "",
+      "$r = $d.ShowDialog($o); $o.Close()",
+      "if ($r -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.SelectedPath } else { exit 3 }",
+    ].filter(Boolean).join("\n");
+    return { cmd: "powershell.exe", args: ["-NoProfile", "-STA", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(ps, "utf16le").toString("base64")] };
+  }
+  if (platform === "darwin") {
+    const q = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+    const from = initial ? ` default location (POSIX file ${q(initial)})` : "";
+    return { cmd: "osascript", args: ["-e", `POSIX path of (choose folder with prompt ${q(title)}${from})`] };
+  }
+  if (!env.DISPLAY && !env.WAYLAND_DISPLAY) return null;
+  if (has("zenity")) return { cmd: "zenity", args: ["--file-selection", "--directory", `--title=${title}`, ...(initial ? [`--filename=${initial.endsWith("/") ? initial : `${initial}/`}`] : [])] };
+  if (has("kdialog")) return { cmd: "kdialog", args: ["--getexistingdirectory", initial || homedir(), "--title", title] };
+  return null;
+}
+
+function onPath(exe: string): boolean {
+  return (process.env.PATH ?? "").split(delimiter).some((d) => d && existsSync(join(d, exe)));
+}
+
+export class NoGuiError extends Error {}
+
+/** Mở hộp chọn thư mục, chờ người dùng chọn. Không có giao diện → NoGuiError (giao diện web cho nhập đường dẫn). */
+export function pickFolder(initial?: string, run: typeof spawn = spawn): Promise<{ path: string } | { cancelled: true }> {
+  const c = pickFolderCommand(process.platform, process.env, onPath, initial && existsSync(initial) ? initial : undefined);
+  if (!c) return Promise.reject(new NoGuiError("Máy chạy ứng dụng không mở được hộp chọn thư mục – hãy gõ đường dẫn thư mục"));
+  return new Promise((res, rej) => {
+    let out = "";
+    let err = "";
+    const p = run(c.cmd, c.args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const t = setTimeout(() => p.kill(), 10 * 60_000);
+    p.stdout?.on("data", (d) => (out += d));
+    p.stderr?.on("data", (d) => (err += d));
+    p.on("error", (e) => (clearTimeout(t), rej(new NoGuiError(`Không mở được hộp chọn thư mục (${e.message}) – hãy gõ đường dẫn thư mục`))));
+    p.on("close", (code) => {
+      clearTimeout(t);
+      const path = out.trim().split(/\r?\n/).pop()?.trim() ?? "";
+      if (code === 0 && path) return res({ path: /[^:\\/][\\/]$/.test(path) ? path.slice(0, -1) : path });
+      // huỷ: Windows mã 3, osascript -128, zenity/kdialog mã 1 không lỗi
+      if (code === 3 || /-128/.test(err) || (code === 1 && !err.trim())) return res({ cancelled: true });
+      rej(new NoGuiError(`Hộp chọn thư mục lỗi: ${err.trim() || `mã ${code}`} – hãy gõ đường dẫn thư mục`));
+    });
+  });
 }
 
 // ---------- Dọn dẹp (chuyển vào _luu_tru, không xóa hẳn) ----------

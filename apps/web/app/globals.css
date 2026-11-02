@@ -178,3 +178,9 @@ li:last-child > .row-link { border-bottom-left-radius: 12px; border-bottom-right
   .msg, .zoom > img, .menu-pop { transform: none !important; }
   .bar > i, .clip > .fill, .clip > .head { transition-duration: 0ms; }
 }
+
+/* ---------- Hộp thoại xác nhận: nền mờ dần 200ms, hộp phóng 0.96 → 1 220ms ---------- */
+.modal { transition: opacity 200ms var(--ease-out); }
+.modal-box { transition: transform 220ms var(--ease-out), opacity 220ms var(--ease-out); }
+@starting-style { .modal { opacity: 0; } .modal-box { opacity: 0; transform: scale(0.96); } }
+@media (prefers-reduced-motion: reduce) { .modal-box { transform: none !important; } }

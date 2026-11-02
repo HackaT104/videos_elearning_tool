@@ -32,7 +32,7 @@ Chạy
   wait <jobId> [--timeout giây]            Chờ job xong (mặc định 540 s; hết giờ → mã thoát 2, chạy lại wait)
 
 Yêu cầu từ ứng dụng
-  pending                                  Yêu cầu đang chờ Claude Code
+  pending                                  Yêu cầu đang chờ / đang làm (status running = ứng dụng đã giao cho bạn)
   done <reqId> [lời nhắn...]               Đánh dấu đã xong
   fail <reqId> <lý do...>                  Đánh dấu không làm được
 `;
@@ -200,7 +200,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       }
       case "status": {
         need(a, 1, "status <pid>");
-        const [vids, jobs, reqs] = await Promise.all([api.get(`/projects/${enc(a[0])}/videos`), api.get(`/projects/${enc(a[0])}/jobs`), api.get(`/claude-code/requests?projectId=${enc(a[0])}&status=pending`)]);
+        const [vids, jobs, reqs] = await Promise.all([api.get(`/projects/${enc(a[0])}/videos`), api.get(`/projects/${enc(a[0])}/jobs`), api.get(`/claude-code/requests?projectId=${enc(a[0])}&status=pending,running`)]);
         json(io, {
           videos: vids.map((v: any) => ({ key: v.key, status: v.status, qaOk: v.qaOk, rendered: v.rendered, approved: v.approved, job: v.job ? `#${v.job.id} ${v.job.kind} ${v.job.status}` : null })),
           activeJobs: jobs.filter((j: any) => ["queued", "running", "paused"].includes(j.status)).map((j: any) => ({ id: j.id, kind: j.kind, video: j.video_key, status: j.status, progress: j.progress, message: j.message })),
@@ -294,7 +294,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
         return j.status === "done" ? 0 : j.status === "timeout" ? 2 : 1;
       }
       case "pending":
-        json(io, await api.get("/claude-code/requests?status=pending"));
+        json(io, await api.get("/claude-code/requests?status=pending,running"));
         return 0;
       case "done":
       case "fail": {

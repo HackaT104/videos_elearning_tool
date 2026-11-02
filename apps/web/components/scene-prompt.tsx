@@ -54,11 +54,8 @@ export function ScenePrompt({ pid, vkey, scene, busy, onQueued }: { pid: string;
         <span>Cho AI viết mã cảnh tùy biến (tự do hơn mẫu có sẵn, lâu hơn)</span>
       </label>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {ok ? (
-          <button className="btn btn-primary" disabled={!text.trim() || busy || a.busy} onClick={send}>Gửi cho AI sửa</button>
-        ) : (
-          <ClaudeCodeButton primary pid={pid} kind={custom && scene.design?.template !== "custom" ? "custom-scene" : "revise"} videoKey={vkey} sceneId={scene.id} note={text.trim()} disabled={!text.trim()} onSent={() => setText("")} />
-        )}
+        {ok && <button className="btn btn-primary" disabled={!text.trim() || busy || a.busy} onClick={send}>Gửi cho AI sửa</button>}
+        <ClaudeCodeButton primary={!ok} pid={pid} kind={custom && scene.design?.template !== "custom" ? "custom-scene" : "revise"} videoKey={vkey} sceneId={scene.id} note={text.trim()} what={`sửa cảnh ${scene.id} theo yêu cầu của bạn`} disabled={!text.trim()} onSent={() => setText("")} />
         {(scene.history?.length ?? 0) > 0 && <button className="btn" disabled={busy || a.busy} onClick={undo}>Hoàn tác lần sửa trước</button>}
         {ok && <span className="hidden text-[12px] text-soft sm:inline">Ctrl + Enter để gửi</span>}
       </div>
