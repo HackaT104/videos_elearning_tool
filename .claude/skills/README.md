@@ -34,3 +34,9 @@ không cài hook Node của plugin. Muốn cài bản plugin đầy đủ (tự 
 
 Chưng cất từ HyperFrames (https://github.com/heygen-com/hyperframes, Apache-2.0, commit 6b0abb4) – xem `cvs-scene-design/LICENSE` và `NOTICE.md`.
 Không cài skill lõi `hyperframes` (hợp đồng của nó xung đột với lint của dự án). Checklist rút gọn cho Claude trong app: `packages/ai/src/index.ts`.
+
+## Làm AI của ứng dụng bằng Claude Code (gói đã đăng ký): cvs-claude-code
+
+| Kỹ năng | Dùng khi |
+|---|---|
+| cvs-claude-code | Người dùng nhờ thiết kế/sửa cảnh, vẽ minh hoạ, viết cảnh tùy biến, sửa cách đọc cho video, hoặc nói "Xử lý các yêu cầu đang chờ của Course Video Studio". Dùng lệnh `pnpm cvs` (worker phải đang chạy) |

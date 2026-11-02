@@ -43,13 +43,23 @@ if not exist "node_modules\.cvs-installed" (
   echo ok> "node_modules\.cvs-installed"
 )
 
-if not exist "apps\web\.next\BUILD_ID" (
+rem Sau moi lan cap nhat (git pull): cai lai thu vien + dung lai giao dien khi ma nguon doi
+set "CVS_HEAD="
+for /f %%h in ('git rev-parse HEAD 2^>nul') do set "CVS_HEAD=%%h"
+set "CVS_BUILT="
+if exist "apps\web\.next\.cvs-head" set /p CVS_BUILT=<"apps\web\.next\.cvs-head"
+if not exist "apps\web\.next\BUILD_ID" set "CVS_BUILT=none"
+if not "%CVS_HEAD%"=="%CVS_BUILT%" (
+  echo.
+  echo [Cap nhat] Ma nguon da thay doi - cai lai thu vien va dung lai giao dien...
+  call pnpm install
+  if errorlevel 1 goto :loi
   call pnpm --filter @cvs/web build
   if errorlevel 1 goto :loi
+  if defined CVS_HEAD echo %CVS_HEAD%> "apps\web\.next\.cvs-head"
 )
 
 echo.
-echo Luu y: CIT Voice Studio phai dang chay tren may nay (http://127.0.0.1:8001).
 echo Giao dien: http://localhost:3000   (dong cua so nay de dung ung dung)
 echo.
 start "" cmd /c "timeout /t 6 >nul & start http://localhost:3000"

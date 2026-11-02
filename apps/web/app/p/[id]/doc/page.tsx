@@ -5,6 +5,7 @@ import { useAction, useApi } from "@/lib/hooks";
 import { useProject } from "@/lib/project";
 import { GlossaryEditor } from "@/components/glossary";
 import { Badge, Msg, PageHead } from "@/components/ui";
+import { ClaudeCodeButton, ClaudeCodeStatus } from "@/components/claude-code";
 
 type Row = { key: string; scene: string; idx: number; text: string; tts: string; locked: boolean; changed: boolean; rules: string[]; warnings: string[]; voice: any };
 
@@ -16,12 +17,16 @@ export default function Doc() {
   const a = useAction();
   const rows = useMemo(() => (data ?? []).filter((r) => (filter === "all" ? true : filter === "warn" ? r.warnings.length > 0 : r.changed || r.warnings.length > 0)), [data, filter]);
   const warnCount = data?.filter((r) => r.warnings.length).length ?? 0;
+  const claude = useApi<{ available: boolean }>("/claude/status", 15000);
   return (
     <div>
       <PageHead step={3} title="Chuẩn hoá cách đọc">
+        {/* có API: agent tự sửa cách đọc khi sản xuất; không có → nhờ Claude Code (gói đã đăng ký) */}
+        {claude.data?.available === false && warnCount > 0 && <ClaudeCodeButton pid={pid} kind="fix-readings" label="Nhờ Claude Code sửa cách đọc" />}
         <button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api(`/projects/${pid}/normalize`, { method: "POST", json: {} }); await reload(); }, "Đã chuẩn hóa lại toàn bộ (giữ câu đã sửa tay)")}>Chuẩn hóa lại tất cả</button>
       </PageHead>
       <Msg msg={a.msg} />
+      <div className="mb-3"><ClaudeCodeStatus pid={pid} kinds={["fix-readings"]} limit={1} /></div>
       <div className="mb-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
         Bước bắt buộc trước khi tạo giọng: ứng dụng đổi ký hiệu, số, ngày tháng, viết tắt và thuật ngữ thành cách đọc tiếng Việt
         (ví dụ CO₂ → "xê ô hai", 01/01/2027 → "ngày một tháng một năm…"). Khi sản xuất, câu nào còn <b>chữ số, chữ viết tắt hoặc từ tiếng Anh</b> chưa

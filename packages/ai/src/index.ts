@@ -9,7 +9,7 @@ import { AiError, ask, askJson } from "./client";
 
 export * from "./client";
 
-const RULES = `QUY TẮC BẮT BUỘC (khóa học e-learning TUV NORD, tiếng Việt):
+export const RULES = `QUY TẮC BẮT BUỘC (khóa học e-learning TUV NORD, tiếng Việt):
 - KHÔNG BỊA SỐ LIỆU. Mọi con số, ngày, mã phiên bản, tên tổ chức trên màn hình phải lấy đúng từ tài liệu nguồn được cung cấp.
 - Mọi chữ/nhãn/danh sách bạn tự thêm (không có nguyên văn trong kịch bản) phải được liệt kê trong "assumptions".
 - Thuật ngữ: verification = thẩm tra, validation = thẩm định; viết "TUV NORD".
@@ -143,14 +143,15 @@ export type DesignResult = { design: SceneDesign; assumptions: string[]; reasoni
 const designForPrompt = (d: SceneDesign) =>
   JSON.stringify(d, (k, v) => (k === "svg" && typeof v === "string" ? "(đã vẽ – giữ nguyên brief để giữ hình, đổi brief để vẽ lại)" : k === "svgKey" ? undefined : v));
 
-export async function designScene(video: Video, scene: Scene, T?: SceneTiming, note?: string): Promise<DesignResult> {
+export type DesignReply = { template: string; params: Record<string, unknown>; assumptions: string[]; reasoning?: string };
+export type Prompt = { system: string; content: string };
+
+/** Prompt chọn template + điền tham số cho một cảnh (dùng chung cho Claude API và Claude Code). */
+export function designPrompt(video: Video, scene: Scene, T?: SceneTiming, note?: string): Prompt {
   const n = scene.sentences.length;
-  const ids = designIds(scene);
-  const curImage = scene.design?.template === "image-focus" ? scene.design.params.image : undefined;
-  const r = await askJson<{ template: string; params: Record<string, unknown>; assumptions: string[]; reasoning?: string }>(
-    {
-      system: `Bạn là đạo diễn hình chuyển động cho video e-learning. Bạn chọn MỘT template cảnh có tham số và điền tham số để hình khớp từng câu thoại. ${RULES}\n\n${MOTION_CHECKLIST}\n\nBiểu tượng có sẵn: ${ICON_NAMES.join(", ")}.\n\nTHƯ VIỆN TEMPLATE:\n${catalog(ids)}`,
-      content: `${seriesSpec(video)}
+  return {
+    system: `Bạn là đạo diễn hình chuyển động cho video e-learning. Bạn chọn MỘT template cảnh có tham số và điền tham số để hình khớp từng câu thoại. ${RULES}\n\n${MOTION_CHECKLIST}\n\nBiểu tượng có sẵn: ${ICON_NAMES.join(", ")}.\n\nTHƯ VIỆN TEMPLATE:\n${catalog(designIds(scene))}`,
+    content: `${seriesSpec(video)}
 
 ${sceneBrief(video, scene, T)}
 ${scene.design ? `\nTHIẾT KẾ HIỆN TẠI: ${designForPrompt(scene.design)}` : ""}
@@ -163,18 +164,25 @@ Yêu cầu:
 - Có thể nhấn một cụm bằng **…**; chỉ số dưới viết CO₂.
 
 Trả về DUY NHẤT JSON: {"template": string, "params": object, "assumptions": string[], "reasoning": string}`,
-      effort: "medium",
-    },
-    (v) => {
-      if (!ids.includes(v.template)) return [`template "${v.template}" không có trong thư viện`];
-      const errs = validateParams(v.template, v.params ?? {});
-      if (v.template === "illustration" && !(typeof v.params?.brief === "string" && v.params.brief.trim())) errs.push('illustration cần "brief" (mô tả hình bằng lời)');
-      if (v.template === "image-focus" && v.params?.image !== curImage) errs.push(`image-focus phải giữ nguyên "image": ${JSON.stringify(curImage)}`);
-      const cues = JSON.stringify(v.params).match(/"cue":\s*(\d+)/g) ?? [];
-      for (const c of cues) if (Number(c.split(":")[1]) >= n) errs.push(`cue ${c} vượt quá số câu (${n})`);
-      return errs;
-    },
-  );
+  };
+}
+
+/** Lỗi của một thiết kế template cho cảnh: template lạ, thiếu tham số, illustration thiếu brief, đổi ảnh, cue vượt số câu. */
+export function designErrors(scene: Scene, v: { template: string; params?: Record<string, unknown> }): string[] {
+  const ids = designIds(scene);
+  if (!ids.includes(v.template)) return [`template "${v.template}" không có trong thư viện`];
+  const errs = validateParams(v.template, v.params ?? {});
+  if (v.template === "illustration" && !(typeof v.params?.brief === "string" && v.params.brief.trim())) errs.push('illustration cần "brief" (mô tả hình bằng lời)');
+  const curImage = scene.design?.template === "image-focus" ? scene.design.params.image : undefined;
+  if (v.template === "image-focus" && v.params?.image !== curImage) errs.push(`image-focus phải giữ nguyên "image": ${JSON.stringify(curImage)}`);
+  const n = scene.sentences.length;
+  const cues = JSON.stringify(v.params ?? {}).match(/"cue":\s*(\d+)/g) ?? [];
+  for (const c of cues) if (Number(c.split(":")[1]) >= n) errs.push(`cue ${c} vượt quá số câu (${n})`);
+  return errs;
+}
+
+export async function designScene(video: Video, scene: Scene, T?: SceneTiming, note?: string): Promise<DesignResult> {
+  const r = await askJson<DesignReply>({ ...designPrompt(video, scene, T, note), effort: "medium" }, (v) => designErrors(scene, v));
   // SVG minh hoạ chỉ do drawIllustration vẽ (bước dựng cảnh, theo brief) – không nhận SVG AI tự viết ở đây
   if (r.template === "illustration") {
     delete r.params.svg;
@@ -192,7 +200,7 @@ export type IllustrationStyle = {
   dark: boolean;
 };
 
-const ILLUSTRATION_RULES = (o: IllustrationStyle) => `Vẽ MỘT hình minh hoạ vector phẳng (flat) cho video e-learning, dạng SVG:
+export const ILLUSTRATION_RULES = (o: IllustrationStyle) => `Vẽ MỘT hình minh hoạ vector phẳng (flat) cho video e-learning, dạng SVG:
 - <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"> – không width/height; không nền phủ kín cả khung (nền video có sẵn).
 - Chỉ dùng thẻ: g, path, circle, ellipse, rect, line, polyline, polygon. Tối đa ~150 phần tử. KHÔNG chữ (không <text>), không <image>, <use>, <defs>, gradient, filter, <style>, script, href, sự kiện on*.
 - Màu CHỈ qua thuộc tính fill/stroke = biến theme hoặc "none": ${THEME_COLOR_VARS.map((c) => `var(--${c})`).join(", ")}.
@@ -202,27 +210,35 @@ const ILLUSTRATION_RULES = (o: IllustrationStyle) => `Vẽ MỘT hình minh ho�
 - Nét viền ngoài chính của các hình nên là <path … class="draw" pathLength="1" fill="none" stroke="var(--ink)"> để vẽ ra dần (mảng màu tô dùng phần tử riêng không có class).
 - Có thể dùng transform="translate(…)"/"scale(…)" trên <g>.`;
 
+export function illustrationPrompt(brief: string, o: IllustrationStyle, feedback = ""): Prompt {
+  return {
+    system: `Bạn là họa sĩ minh hoạ vector cho video e-learning an toàn – chất lượng – môi trường (TUV NORD). ${ILLUSTRATION_RULES(o)}`,
+    content: `MÔ TẢ HÌNH (tiếng Việt):\n"""${brief.slice(0, 1500)}"""\n${feedback ? `\nLẦN TRƯỚC CHƯA ĐẠT (phải sửa):\n${feedback}\n` : ""}\nTrả về DUY NHẤT một khối \`\`\`svg … \`\`\` chứa toàn bộ SVG.`,
+  };
+}
+
+/** Lọc SVG minh hoạ và kiểm mức tối thiểu (≥ 6 phần tử, ≥ 2 nhóm part-N). svg = null khi chưa đạt. */
+export function checkIllustration(raw: string): { svg: string | null; errors: string[]; warnings: string[] } {
+  const r = sanitizeSvg(raw, "illustration");
+  const parts = r.svg?.match(/<g id="part-\d+"/g)?.length ?? 0;
+  const errors = [r.error, r.svg && (r.elements ?? 0) < 6 ? "Hình quá sơ sài (< 6 phần tử)" : "", r.svg && parts < 2 ? 'Cần ≥ 2 nhóm <g id="part-N">' : ""].filter((x): x is string => !!x);
+  return { svg: r.svg && errors.length === 0 ? r.svg : null, errors, warnings: r.warnings };
+}
+
 /** Claude vẽ một hình minh hoạ SVG theo mô tả; kết quả đã lọc an toàn (mode illustration). */
 export async function drawIllustration(brief: string, o: IllustrationStyle): Promise<{ svg: string; warnings: string[] }> {
   if (!brief.trim()) throw new AiError("Thiếu mô tả hình minh hoạ");
   let feedback = "";
   for (let round = 0; round < 3; round++) {
-    const text = await ask({
-      system: `Bạn là họa sĩ minh hoạ vector cho video e-learning an toàn – chất lượng – môi trường (TUV NORD). ${ILLUSTRATION_RULES(o)}`,
-      content: `MÔ TẢ HÌNH (tiếng Việt):\n"""${brief.slice(0, 1500)}"""\n${feedback ? `\nLẦN TRƯỚC CHƯA ĐẠT (phải sửa):\n${feedback}\n` : ""}\nTrả về DUY NHẤT một khối \`\`\`svg … \`\`\` chứa toàn bộ SVG.`,
-      effort: "medium",
-      maxTokens: 24000,
-    });
+    const text = await ask({ ...illustrationPrompt(brief, o, feedback), effort: "medium", maxTokens: 24000 });
     const raw = text.match(/```(?:svg|xml|html)?\s*(<svg[\s\S]*?<\/svg>)\s*```/)?.[1] ?? text.match(/<svg[\s\S]*<\/svg>/)?.[0];
     if (!raw) {
       feedback = "Không tìm thấy <svg>…</svg>.";
       continue;
     }
-    const r = sanitizeSvg(raw, "illustration");
-    const parts = r.svg?.match(/<g id="part-\d+"/g)?.length ?? 0;
-    const errs = [r.error, r.svg && (r.elements ?? 0) < 6 ? "Hình quá sơ sài (< 6 phần tử)" : "", r.svg && parts < 2 ? 'Cần ≥ 2 nhóm <g id="part-N">' : ""].filter(Boolean);
-    if (r.svg && errs.length === 0) return { svg: r.svg, warnings: r.warnings };
-    feedback = [...errs, ...r.warnings.slice(0, 5)].join("\n");
+    const r = checkIllustration(raw);
+    if (r.svg) return { svg: r.svg, warnings: r.warnings };
+    feedback = [...r.errors, ...r.warnings.slice(0, 5)].join("\n");
   }
   throw new AiError(`Claude chưa vẽ được hình minh hoạ hợp lệ: ${feedback}`);
 }
@@ -243,12 +259,11 @@ export type CustomSceneOptions = {
   current?: string;
 };
 
-export async function writeCustomScene(video: Video, scene: Scene, o: CustomSceneOptions): Promise<{ code: string; assumptions: string[] }> {
-  let feedback = "";
-  for (let round = 0; round < 3; round++) {
-    const text = await ask({
-      system: `Bạn viết mã cảnh hoạt hình cho video e-learning (${o.engine === "hyperframes" ? "HTML + CSS + SVG + GSAP, HyperFrames" : "React/TSX, Remotion"}). ${RULES}\n\n${MOTION_CHECKLIST}\n\n${CUSTOM_SCENE_CHECKLIST}\nMọi quy tắc trên phải tuân thủ HỢP ĐỒNG FILE CẢNH (nếu mâu thuẫn, hợp đồng thắng).`,
-      content: `${seriesSpec(video)}
+/** Prompt viết mã cảnh tùy biến (dùng chung cho Claude API và Claude Code). */
+export function customScenePrompt(video: Video, scene: Scene, o: Omit<CustomSceneOptions, "lint">, feedback = ""): Prompt {
+  return {
+    system: `Bạn viết mã cảnh hoạt hình cho video e-learning (${o.engine === "hyperframes" ? "HTML + CSS + SVG + GSAP, HyperFrames" : "React/TSX, Remotion"}). ${RULES}\n\n${MOTION_CHECKLIST}\n\n${CUSTOM_SCENE_CHECKLIST}\nMọi quy tắc trên phải tuân thủ HỢP ĐỒNG FILE CẢNH (nếu mâu thuẫn, hợp đồng thắng).`,
+    content: `${seriesSpec(video)}
 
 HỢP ĐỒNG FILE CẢNH:
 ${o.contract}
@@ -261,9 +276,13 @@ ${o.examples.map((e, i) => `--- mẫu ${i + 1} ---\n${e.slice(0, 9000)}`).join("
 ${feedback ? `\nLỖI CỦA LẦN TRƯỚC (phải sửa hết):\n${feedback}` : ""}
 
 Trả về: một khối mã \`\`\`${o.engine === "hyperframes" ? "html" : "tsx"} … \`\`\` chứa TOÀN BỘ file cảnh, rồi một khối \`\`\`json {"assumptions": [...]} \`\`\` liệt kê chữ/nhãn bạn tự thêm.`,
-      effort: "high",
-      maxTokens: 48000,
-    });
+  };
+}
+
+export async function writeCustomScene(video: Video, scene: Scene, o: CustomSceneOptions): Promise<{ code: string; assumptions: string[] }> {
+  let feedback = "";
+  for (let round = 0; round < 3; round++) {
+    const text = await ask({ ...customScenePrompt(video, scene, o, feedback), effort: "high", maxTokens: 48000 });
     const code = text.match(/```(?:html|tsx|jsx|typescript)\s*([\s\S]*?)```/)?.[1]?.trim();
     const assumptions = (() => {
       try {
@@ -314,22 +333,22 @@ export async function reviseScene(video: Video, scene: Scene, note: string, T?: 
 
 export type ReadingFix = { id: string; tts: string; glossary?: { term: string; reading: string }[]; note?: string };
 
-/** Đề xuất cách đọc tiếng Việt cho các câu còn chữ số / viết tắt / từ tiếng Anh. Không đổi nghĩa, không thêm bớt ý. */
-export async function fixReadings(items: { id: string; text: string; tts: string; warnings: string[] }[], context = ""): Promise<ReadingFix[]> {
-  if (items.length === 0) return [];
-  const r = await askJson<{ fixes: ReadingFix[] }>(
-    {
-      system: `Bạn chuẩn hoá văn bản cho máy đọc tiếng Việt (TTS) trong khóa học e-learning. Viết lại "tts" để máy đọc đúng: số → chữ (kiểu Việt: 423,9 → "bốn trăm hai mươi ba phẩy chín"; phiên bản 5.0 → "năm chấm không"), ngày tháng → "ngày … tháng … năm …", ký hiệu (CO₂ → "xê ô hai"), viết tắt đọc theo chữ cái tiếng Việt (VCS → "vê xê ét") hoặc đọc nghĩa nếu quen dùng (GHG → "khí nhà kính"), thuật ngữ tiếng Anh → phiên âm tiếng Việt dễ đọc hoặc từ tiếng Việt tương đương đúng chuyên ngành. Giữ nguyên ý, không thêm bớt nội dung, giữ nguyên thẻ [nghỉ …], [cười]. ${RULES}`,
-      content: `Ngữ cảnh khóa học: ${context.slice(0, 2000)}
+export function readingsPrompt(items: { id: string; text: string; tts: string; warnings: string[] }[], context = ""): Prompt {
+  return {
+    system: `Bạn chuẩn hoá văn bản cho máy đọc tiếng Việt (TTS) trong khóa học e-learning. Viết lại "tts" để máy đọc đúng: số → chữ (kiểu Việt: 423,9 → "bốn trăm hai mươi ba phẩy chín"; phiên bản 5.0 → "năm chấm không"), ngày tháng → "ngày … tháng … năm …", ký hiệu (CO₂ → "xê ô hai"), viết tắt đọc theo chữ cái tiếng Việt (VCS → "vê xê ét") hoặc đọc nghĩa nếu quen dùng (GHG → "khí nhà kính"), thuật ngữ tiếng Anh → phiên âm tiếng Việt dễ đọc hoặc từ tiếng Việt tương đương đúng chuyên ngành. Giữ nguyên ý, không thêm bớt nội dung, giữ nguyên thẻ [nghỉ …], [cười]. ${RULES}`,
+    content: `Ngữ cảnh khóa học: ${context.slice(0, 2000)}
 
 Các câu cần sửa (JSON):
 ${JSON.stringify(items, null, 1)}
 
 Trả về DUY NHẤT JSON: {"fixes": [{"id": string, "tts": string, "glossary": [{"term": string, "reading": string}], "note": string}]}
 - "glossary": thuật ngữ nên lưu để dùng lại cho các câu khác (term = nguyên văn trong lời thoại).`,
-      effort: "medium",
-    },
-    (v) => (Array.isArray(v.fixes) ? [] : ["Thiếu fixes"]),
-  );
+  };
+}
+
+/** Đề xuất cách đọc tiếng Việt cho các câu còn chữ số / viết tắt / từ tiếng Anh. Không đổi nghĩa, không thêm bớt ý. */
+export async function fixReadings(items: { id: string; text: string; tts: string; warnings: string[] }[], context = ""): Promise<ReadingFix[]> {
+  if (items.length === 0) return [];
+  const r = await askJson<{ fixes: ReadingFix[] }>({ ...readingsPrompt(items, context), effort: "medium" }, (v) => (Array.isArray(v.fixes) ? [] : ["Thiếu fixes"]));
   return r.fixes.filter((f) => items.some((i) => i.id === f.id) && f.tts?.trim());
 }

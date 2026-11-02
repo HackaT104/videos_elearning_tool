@@ -100,6 +100,8 @@ export function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS jobs_status ON jobs(status);
     CREATE TABLE IF NOT EXISTS glossary (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, term TEXT NOT NULL, reading TEXT NOT NULL, case_sensitive INTEGER NOT NULL DEFAULT 0, note TEXT);
     CREATE TABLE IF NOT EXISTS voices (provider TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, gender TEXT, PRIMARY KEY (provider, id));
+    CREATE TABLE IF NOT EXISTS claude_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL, video_key TEXT, scene_id TEXT, kind TEXT NOT NULL, note TEXT,
+      status TEXT NOT NULL DEFAULT 'pending', message TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   `);
   const vcols = (db.prepare("PRAGMA table_info(voices)").all() as { name: string }[]).map((c) => c.name);
   if (!vcols.includes("region")) db.exec("ALTER TABLE voices ADD COLUMN region TEXT");
@@ -261,4 +263,44 @@ export function cacheVoices(provider: string, voices: { id: string; name: string
 }
 export function listVoices(provider?: string) {
   return (provider ? getDb().prepare("SELECT * FROM voices WHERE provider=?").all(provider) : getDb().prepare("SELECT * FROM voices").all()) as VoiceRow[];
+}
+
+// ---------- yêu cầu AI chờ Claude Code (gói Claude đã đăng ký, không dùng API) ----------
+export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "agent"] as const;
+export type ClaudeRequestKind = (typeof CLAUDE_REQUEST_KINDS)[number];
+export type ClaudeRequestStatus = "pending" | "done" | "failed";
+export type ClaudeRequest = {
+  id: number;
+  project_id: string;
+  video_key: string | null;
+  scene_id: string | null;
+  kind: ClaudeRequestKind;
+  note: string | null;
+  status: ClaudeRequestStatus;
+  message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export function addClaudeRequest(r: { projectId: string; videoKey?: string | null; sceneId?: string | null; kind: ClaudeRequestKind; note?: string | null }): ClaudeRequest {
+  const t = now();
+  const info = getDb()
+    .prepare("INSERT INTO claude_requests (project_id, video_key, scene_id, kind, note, status, created_at, updated_at) VALUES (?,?,?,?,?,'pending',?,?)")
+    .run(r.projectId, r.videoKey ?? null, r.sceneId ?? null, r.kind, r.note ?? null, t, t);
+  return getClaudeRequest(Number(info.lastInsertRowid))!;
+}
+export function getClaudeRequest(id: number): ClaudeRequest | null {
+  return (getDb().prepare("SELECT * FROM claude_requests WHERE id=?").get(id) as ClaudeRequest | undefined) ?? null;
+}
+export function listClaudeRequests(f: { status?: string; projectId?: string; videoKey?: string } = {}, limit = 100): ClaudeRequest[] {
+  const cols = { status: f.status, project_id: f.projectId, video_key: f.videoKey };
+  const used = Object.entries(cols).filter(([, v]) => v);
+  const where = used.map(([k]) => `${k}=?`);
+  const vals = used.map(([, v]) => v);
+  // việc đang chờ: cũ trước (làm theo thứ tự gửi); còn lại: mới trước
+  const order = f.status === "pending" ? "id ASC" : "id DESC";
+  return getDb().prepare(`SELECT * FROM claude_requests ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${order} LIMIT ?`).all(...vals, limit) as ClaudeRequest[];
+}
+export function updateClaudeRequest(id: number, patch: { status: ClaudeRequestStatus; message?: string | null }) {
+  getDb().prepare("UPDATE claude_requests SET status=?, message=?, updated_at=? WHERE id=?").run(patch.status, patch.message ?? null, now(), id);
+  return getClaudeRequest(id);
 }

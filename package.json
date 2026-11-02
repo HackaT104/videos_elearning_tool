@@ -19,7 +19,8 @@
     "mock-cit": "tsx scripts/mock-cit.ts",
     "gallery": "tsx scripts/gallery.ts",
     "e2e": "tsx scripts/e2e.ts",
-    "fixtures": "tsx scripts/make-fixtures.ts"
+    "fixtures": "tsx scripts/make-fixtures.ts",
+    "cvs": "tsx scripts/cvs.ts"
   },
   "devDependencies": {
     "@cvs/ai": "workspace:*",

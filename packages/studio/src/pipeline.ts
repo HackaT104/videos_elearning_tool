@@ -47,7 +47,7 @@ function load(ctx: Ctx): Video {
   return row.data;
 }
 
-function input(ctx: Ctx, video: Video, timing: Timing): BuildInput {
+function input(ctx: Pick<Ctx, "projectId">, video: Video, timing: Timing): BuildInput {
   const voDir = paths.vo(ctx.projectId, video.key);
   return { video, timing, manifest: existsSync(join(voDir, "manifest.json")) ? loadManifest(voDir) : null, voDir, workDir: paths.work(ctx.projectId, video.key, video.engine), assetsDir: paths.assets(ctx.projectId) };
 }
@@ -121,29 +121,42 @@ export async function stepDesign(ctx: Ctx, o: { redesign?: boolean } = {}) {
   ctx.progress("design", 100);
 }
 
-/** Cảnh tùy biến (AI viết mã) khi không template nào phù hợp. */
-export async function makeCustomScene(ctx: Ctx, sceneId: string, instruction?: string) {
-  const video = load(ctx);
-  const timing = currentTiming(ctx.projectId, video);
+/** Kiểm mã cảnh tùy biến theo hợp đồng của engine (danh sách lỗi; rỗng = đạt). */
+export const customLint = (engine: Video["engine"], sceneId: string) => (code: string): string[] =>
+  engine === "hyperframes" ? lintErrors(lintScene(code, sceneId)).map((x) => `${x.rule}: ${x.message}${x.line ? ` (dòng ${x.line})` : ""}`) : lintRemotionScene(code);
+
+/** Đầu vào để viết cảnh tùy biến: dựng video (để có cảnh mẫu cùng theme), hợp đồng file, timing, mã hiện tại. */
+export async function customSceneInput(projectId: string, video: Video, settings: ProjectSettings, sceneId: string, instruction?: string) {
+  const timing = currentTiming(projectId, video);
   const i = video.scenes.findIndex((s) => s.id === sceneId);
+  if (i < 0) throw new Error(`Không có cảnh ${sceneId}`);
   const scene = video.scenes[i];
-  const eng = engineFor(video, ctx.settings);
-  const inp = input(ctx, video, timing);
+  const eng = engineFor(video, settings);
+  const inp = input({ projectId }, video, timing);
   await eng.build(inp);
   const examples = video.scenes
     .filter((s) => s.id !== sceneId && s.design && s.design.template !== "draft")
     .slice(0, 2)
     .map((s) => (video.engine === "hyperframes" ? readFileSync(join(inp.workDir, "compositions", `${s.id}.html`), "utf8") : JSON.stringify(s.design)));
-  const contract = video.engine === "hyperframes" ? HF_CONTRACT(sceneId) : RMT_CONTRACT;
-  const r = await writeCustomScene(video, scene, {
-    engine: video.engine,
-    T: timing.scenes[i],
-    contract,
-    examples,
-    lint: (code) => (video.engine === "hyperframes" ? lintErrors(lintScene(code, sceneId)).map((x) => `${x.rule}: ${x.message}${x.line ? ` (dòng ${x.line})` : ""}`) : lintRemotionScene(code)),
-    instruction,
-    current: scene.design?.template === "custom" ? scene.design.customCode?.[video.engine] : undefined,
-  });
+  return {
+    scene,
+    opts: {
+      engine: video.engine,
+      T: timing.scenes[i],
+      contract: video.engine === "hyperframes" ? HF_CONTRACT(sceneId) : RMT_CONTRACT,
+      examples,
+      lint: customLint(video.engine, sceneId),
+      instruction,
+      current: scene.design?.template === "custom" ? scene.design.customCode?.[video.engine] : undefined,
+    },
+  };
+}
+
+/** Cảnh tùy biến (AI viết mã) khi không template nào phù hợp. */
+export async function makeCustomScene(ctx: Ctx, sceneId: string, instruction?: string) {
+  const video = load(ctx);
+  const { scene, opts } = await customSceneInput(ctx.projectId, video, ctx.settings, sceneId, instruction);
+  const r = await writeCustomScene(video, scene, opts);
   if (scene.design) scene.history = [...(scene.history ?? []), scene.design].slice(-5);
   scene.design = { template: "custom", params: {}, by: "ai", customCode: { ...(scene.design?.customCode ?? {}), [video.engine]: r.code } };
   scene.assumptions = r.assumptions;

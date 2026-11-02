@@ -22,7 +22,7 @@
 | [Node.js 22 LTS](https://nodejs.org) | Bắt buộc ≥ 22 (CLI HyperFrames yêu cầu Node 22). |
 | CIT Voice Studio | Chạy trên **cùng máy** với ứng dụng, cổng mặc định 8001. |
 | Internet lần cài đầu | Tải thư viện, ffmpeg, Chromium cho Playwright/HyperFrames/Remotion. |
-| Khóa Claude API (tùy chọn) | Để viết kịch bản bằng AI, thiết kế cảnh bằng AI, soát hình. Không có khóa: thiết kế cảnh dùng chế độ tự động. |
+| Khóa Claude API (tùy chọn) | Để viết kịch bản bằng AI, thiết kế cảnh bằng AI, soát hình. Không có khóa: thiết kế cảnh dùng chế độ tự động, hoặc dùng Claude Code bằng gói đã đăng ký (xem mục 2b). |
 | Python + `pip install edge-tts` (tùy chọn) | Chỉ cho giọng dự phòng Edge TTS. |
 | Python ≥ 3.10 (tùy chọn) | Chỉ cho giọng thứ hai ZeroTTS (ứng dụng tự tạo venv riêng khi bạn bấm Cài). |
 
@@ -75,6 +75,22 @@ Không có Windows? Trên macOS/Linux: `pnpm install && pnpm run cai-dat && pnpm
 10. **Dọn dẹp** – giọng thô/cũ, file tạm, bộ nhớ đệm xem trước, bản render thử; xác nhận trước và **chuyển vào `_luu_tru/<thời điểm>`** thay vì xóa.
 
 ---
+
+## 2b. Dùng Claude Code (gói đã đăng ký) thay cho API
+
+Ứng dụng tự chọn: **có Claude API** (khoá API / đăng nhập Anthropic Console, tính phí theo lượng dùng) → AI chạy tự động trong ứng dụng.
+**Không có API** nhưng có gói Claude có kèm Claude Code (Pro, Max, Team…) → việc AI do **Claude Code** làm, không tốn phí API:
+
+1. Mở ứng dụng như thường (`KHOI_DONG.cmd`).
+2. Ở chỗ có việc AI, bấm **Gửi cho Claude Code**: sửa cảnh theo yêu cầu (bước Duyệt), viết cảnh tùy biến, *Để Claude Code làm* / *làm tất cả*,
+   *Thiết kế lại cảnh bằng Claude Code* (bước Sản xuất), *Nhờ Claude Code sửa cách đọc* (bước Chuẩn hoá cách đọc). Yêu cầu vào hàng đợi.
+3. Mở Claude Code **trong thư mục dự án** (thư mục có `KHOI_DONG.cmd`) và dán: `Xử lý các yêu cầu đang chờ của Course Video Studio`.
+4. Claude Code (kỹ năng `.claude/skills/cvs-claude-code`) đọc video, lấy **đúng prompt mà ứng dụng gửi cho API** (cùng quy tắc: không bịa số liệu,
+   chữ ≥ 28 px, đồng bộ theo câu, ghi assumptions), ghi thiết kế/hình minh hoạ/mã cảnh qua các bước kiểm của ứng dụng, xem ảnh khung QA để
+   tự soát, render lại rồi đánh dấu xong. Trạng thái (*Chờ Claude Code* → *Xong*) hiện ngay trong ứng dụng; mọi thay đổi hoàn tác được.
+
+Claude Code điều khiển ứng dụng bằng `pnpm cvs <lệnh>` (gõ `pnpm cvs help` để xem; worker phải đang chạy, địa chỉ đổi bằng `CVS_API`).
+Có thể nhờ trực tiếp, ví dụ "đổi cảnh s2 của video CAR-L1_MO2_U2.2_1 sang so sánh hai cột". Trang **Claude AI** giải thích hai cách.
 
 ## 3. Kiến trúc
 
@@ -148,6 +164,7 @@ pnpm gallery            # ảnh mọi template × mọi theme vào tests/.out/ga
 pnpm mock-cit           # máy chủ CIT GIẢ LẬP ở cổng 8001 (âm thử, không phải giọng thật)
 pnpm e2e                # đầu-cuối không cần giao diện (đặt CVS_TTS_MOCK=1 nếu chưa có CIT)
 pnpm fixtures           # sinh lại file mẫu: 2 video docx, 1 outline, 1 xlsx
+pnpm cvs help           # lệnh cho Claude Code: xem video, lấy prompt, ghi thiết kế/SVG/mã cảnh, check, render, hàng đợi yêu cầu
 ```
 
 ---

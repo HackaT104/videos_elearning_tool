@@ -12,17 +12,18 @@ import {
 import {
   addGlossary, createProject, deleteGlossary, deleteVideo, enqueueJob, getJob, getProject, getVideo, glossaryFor, listFiles, listGlossary, listJobs,
   listProjects, listVideos, paths, setVideoFlags, STORAGE, updateJob, updateProject, upsertVideo, activeJobFor, cacheVoices, listVoices, type JobKind,
+  addClaudeRequest, CLAUDE_REQUEST_KINDS, getClaudeRequest, listClaudeRequests, updateClaudeRequest, type ClaudeRequestKind,
 } from "@cvs/db";
 import {
   AssetError, assetFile, deleteAsset, listAssets, MAX_ASSET_BYTES, saveAsset,
-  archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
+  applySceneEdit, claudeCodePrompt, archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
 } from "@cvs/studio";
 import {
   CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, ensureZerottsRunning, installCit, installZerotts, restartCit, restartZerotts,
   ZEROTTS_REPO, ZEROTTS_VOICES, ZerottsClient, zerottsManagerState,
 } from "@cvs/tts";
 import { DEFAULT_FONT_PAIR, FONT_PAIRS, fontFaceUrlCss, fontFilePath, THEMES, THEME_IDS } from "@cvs/themes";
-import { TEMPLATES, ICON_NAMES } from "@cvs/engine";
+import { TEMPLATES, ICON_NAMES, KINETIC_PRESETS } from "@cvs/engine";
 import { aiAvailable } from "@cvs/ai";
 
 const app = new Hono().basePath("/api");
@@ -36,6 +37,7 @@ app.get("/meta", (c) =>
     themes: THEME_IDS.map((id) => ({ id, name: THEMES[id].name, description: THEMES[id].description, dark: THEMES[id].dark, colors: THEMES[id].colors, fonts: { display: THEMES[id].fonts.display.family, body: THEMES[id].fonts.body.family, displayWeight: THEMES[id].fonts.display.weight } })),
     templates: Object.values(TEMPLATES).map((t) => ({ id: t.id, label: t.label, when: t.when, example: t.example, schema: t.schema })),
     icons: ICON_NAMES,
+    kineticPresets: KINETIC_PRESETS,
     levels: LEVEL_PRESETS,
     defaultGlossary: DEFAULT_GLOSSARY,
     ai: aiAvailable(),
@@ -311,6 +313,13 @@ app.post("/projects/:id/videos/:key/scenes/:sid/undo", (c) => {
   const job = enqueueJob(id, "render", key, { skipStyle: true });
   return c.json({ ok: true, job });
 });
+// Ghi thiết kế một cảnh (Claude Code / sửa tay): kiểm như AI trong app, thiết kế cũ vào lịch sử để hoàn tác, bỏ duyệt.
+app.patch("/projects/:id/videos/:key/scenes/:sid", async (c) => {
+  const b = await c.req.json().catch(() => null);
+  if (!b || typeof b !== "object") return c.json({ ok: false, errors: ["Thân yêu cầu phải là JSON"] }, 400);
+  const r = applySceneEdit(c.req.param("id"), c.req.param("key"), c.req.param("sid"), { design: b.design, assumptions: b.assumptions, note: b.note, by: b.by });
+  return c.json(r, r.ok ? 200 : /Không tìm thấy|Không có cảnh/.test(r.errors[0] ?? "") ? 404 : 400);
+});
 app.patch("/projects/:id/videos/:key", async (c) => {
   const id = c.req.param("id");
   const key = c.req.param("key");
@@ -350,8 +359,10 @@ app.get("/projects/:id/reading", (c) => {
 app.patch("/projects/:id/videos/:key/sentence", async (c) => {
   const id = c.req.param("id");
   const b = (await c.req.json()) as { scene: string; idx: number; tts: string };
-  const v = getVideo(id, c.req.param("key"))!;
-  const s = v.data.scenes.find((x) => x.id === b.scene)!;
+  const v = getVideo(id, c.req.param("key"));
+  const s = v?.data.scenes.find((x) => x.id === b.scene);
+  if (!v || !s?.sentences[b.idx]) return c.json({ error: "Không tìm thấy câu" }, 404);
+  if (typeof b.tts !== "string" || !b.tts.trim()) return c.json({ error: "Cách đọc không được trống" }, 400);
   s.sentences[b.idx] = { ...s.sentences[b.idx], tts: b.tts, ttsLocked: true };
   upsertVideo(id, v.data);
   return c.json({ ok: true, warnings: checkTts(b.tts) });
@@ -418,6 +429,39 @@ app.patch("/jobs/:jid", async (c) => {
   else if (action === "cancel") updateJob(jid, { status: "canceled", message: "Đã hủy" });
   else if (action === "retry" && ["failed", "canceled"].includes(j.status)) return c.json(enqueueJob(j.project_id, j.kind, j.video_key, j.payload));
   return c.json(getJob(jid));
+});
+
+// ---------- yêu cầu AI chờ Claude Code (khi không có Claude API) ----------
+app.post("/claude-code/requests", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  if (!getProject(String(b.projectId ?? ""))) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  if (!CLAUDE_REQUEST_KINDS.includes(b.kind)) return c.json({ error: `"kind" phải là ${CLAUDE_REQUEST_KINDS.join(" | ")}` }, 400);
+  const v = b.videoKey ? getVideo(b.projectId, String(b.videoKey)) : null;
+  if (b.videoKey && !v) return c.json({ error: "Không tìm thấy video" }, 404);
+  if (b.sceneId && !v?.data.scenes.some((s) => s.id === b.sceneId)) return c.json({ error: "Không tìm thấy cảnh" }, 404);
+  if (["revise", "illustration", "custom-scene"].includes(b.kind) && !b.sceneId) return c.json({ error: "Cần mã cảnh (sceneId)" }, 400);
+  if (b.kind === "revise" && !String(b.note ?? "").trim()) return c.json({ error: "Cần nội dung yêu cầu sửa (note)" }, 400);
+  if (b.note !== undefined && (typeof b.note !== "string" || b.note.length > 4000)) return c.json({ error: '"note" phải là chuỗi ≤ 4000 ký tự' }, 400);
+  return c.json(addClaudeRequest({ projectId: b.projectId, videoKey: b.videoKey ?? null, sceneId: b.sceneId ?? null, kind: b.kind as ClaudeRequestKind, note: b.note?.trim() || null }));
+});
+app.get("/claude-code/requests", (c) => c.json(listClaudeRequests({ status: c.req.query("status"), projectId: c.req.query("projectId"), videoKey: c.req.query("videoKey") })));
+app.patch("/claude-code/requests/:rid", async (c) => {
+  const id = Number(c.req.param("rid"));
+  const b = await c.req.json().catch(() => ({}));
+  if (!getClaudeRequest(id)) return c.json({ error: "Không có yêu cầu" }, 404);
+  if (!["pending", "done", "failed"].includes(b.status)) return c.json({ error: '"status" phải là done | failed | pending' }, 400);
+  if (b.message !== undefined && typeof b.message !== "string") return c.json({ error: '"message" phải là chuỗi' }, 400);
+  return c.json(updateClaudeRequest(id, { status: b.status, message: b.message?.slice(0, 4000) ?? null }));
+});
+// Prompt đúng như Claude API nhận (design | illustration | custom | readings) – Claude Code làm theo prompt này.
+app.post("/claude-code/prompt", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  if (!["design", "illustration", "custom", "readings"].includes(b.kind)) return c.json({ error: '"kind" phải là design | illustration | custom | readings' }, 400);
+  try {
+    return c.json(await claudeCodePrompt(String(b.projectId ?? ""), String(b.videoKey ?? ""), b.kind, b.sceneId, b.note));
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
 });
 
 // ---------- glossary ----------

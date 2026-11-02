@@ -21,6 +21,7 @@ export default function Duyet() {
   const [playing, setPlaying] = useState<string | null>(null);
   const player = useRef<HTMLVideoElement>(null);
   const a = useAction();
+  const claude = useApi<{ available: boolean }>("/claude/status", 15000);
   if (!data) return <div>Đang tải…</div>;
   const qa = data.qa;
   const v = data.data;
@@ -37,7 +38,11 @@ export default function Duyet() {
     setPlaying(starts.find((x) => t >= x.start && t < x.start + x.dur)?.id ?? null);
   };
   const thumb = (sid: string) => qa?.frames?.find((f) => f.scene === sid && /cuối cảnh/.test(f.label ?? ""))?.file;
-  const custom = (sid: string) => a.run(() => api(`/projects/${pid}/jobs`, { method: "POST", json: { kind: "ai-script", keys: [key], payload: { custom: true, scene: sid } } }), `AI đang viết mã cảnh tùy biến ${sid} (lint + chạy thử tự động)`);
+  // không có Claude API → cùng việc đó vào hàng đợi cho Claude Code (gói đã đăng ký)
+  const custom = (sid: string) =>
+    claude.data?.available
+      ? a.run(() => api(`/projects/${pid}/jobs`, { method: "POST", json: { kind: "ai-script", keys: [key], payload: { custom: true, scene: sid } } }), `AI đang viết mã cảnh tùy biến ${sid} (lint + chạy thử tự động)`)
+      : a.run(() => api("/claude-code/requests", { method: "POST", json: { projectId: pid, kind: "custom-scene", videoKey: key, sceneId: sid } }), `Đã gửi cho Claude Code: viết mã cảnh tùy biến ${sid}`);
   const errors = qa?.items.filter((i) => i.severity === "error") ?? [];
   const warns = qa?.items.filter((i) => i.severity !== "error") ?? [];
   return (
@@ -111,7 +116,7 @@ export default function Duyet() {
                       <div className="px-4 pb-4 sm:px-5">
                         {list.map((x, k) => <div key={k} className="assume mt-1">{x}</div>)}
                         <div className="mt-3"><ScenePrompt pid={pid} vkey={key} scene={s} busy={!!job} onQueued={reload} /></div>
-                        <button className="mt-2 text-[12px] text-soft underline" onClick={() => custom(s.id)}>Hoặc để AI viết lại cảnh này từ đầu (mã tùy biến)</button>
+                        <button className="mt-2 text-[12px] text-soft underline" onClick={() => custom(s.id)}>{claude.data?.available === false ? "Hoặc để Claude Code viết lại cảnh này từ đầu (mã tùy biến)" : "Hoặc để AI viết lại cảnh này từ đầu (mã tùy biến)"}</button>
                       </div>
                     )}
                   </li>
