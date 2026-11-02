@@ -19,11 +19,11 @@ và mỗi video trong trang Sản xuất là **một làn (track)** gồm 6 đo�
 
 | Vai trò | Giá trị |
 |---|---|
-| Mực (chữ, panel tối) | `#13222B` |
+| Mực (chữ, panel tối) | `#0B1F36` (xanh đêm) |
 | Giấy (nền vùng làm việc) | `#F4F6F5` (xám lạnh, không dùng kem) |
 | Bề mặt | `#FFFFFF` |
 | Đường kẻ | `#DCE2E0` |
-| Nhấn "xanh phòng dựng" | `#0B7A5C` (một màu nhấn duy nhất) |
+| Nhấn "xanh TÜV NORD" | `#00469B` (một màu nhấn duy nhất; chỉnh ở `@theme` trong globals.css) |
 | Tín hiệu: cảnh báo / lỗi | `#C98418` / `#C7412F` (chỉ dùng cho trạng thái, không trang trí) |
 
 **Chữ:** Be Vietnam Pro, thiết kế riêng cho tiếng Việt: dấu thanh rõ, không chồng nhau, khác hẳn Inter mặc định.
