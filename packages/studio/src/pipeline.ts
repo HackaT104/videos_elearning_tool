@@ -241,7 +241,12 @@ export async function stepRender(ctx: Ctx) {
     await stepVoice(ctx);
     ({ video, timing, engine } = await stepBuild(ctx));
   }
-  if (timing.estimated && process.env.CVS_ALLOW_ESTIMATED !== "1") throw new Error("Chưa có giọng thật cho mọi cảnh – chạy bước Giọng trước khi render");
+  if (timing.estimated && process.env.CVS_ALLOW_ESTIMATED !== "1") {
+    const mute = video.scenes.filter((s) => !s.sentences.some((x) => x.tts.trim())).map((s) => s.id);
+    if (mute.length)
+      throw new Error(`Cảnh ${mute.join(", ")} chưa có lời thoại nên không tạo được giọng – tải lại tài liệu (bản mới đọc được lời thoại không có nhãn "Giọng đọc") hoặc thêm lời thoại ở bước 4 Kịch bản, rồi Sản xuất lại`);
+    throw new Error("Chưa có giọng thật cho mọi cảnh – chạy bước Giọng trước khi render");
+  }
   const out = paths.render(ctx.projectId, video.key);
   const r = await engine.render(input(ctx, video, timing), out, (p) => {
     if (ctx.shouldStop()) throw new Stopped();
