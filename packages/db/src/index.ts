@@ -272,7 +272,7 @@ export function listVoices(provider?: string) {
 // ---------- yêu cầu AI chờ Claude Code (gói Claude đã đăng ký, không dùng API) ----------
 export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "review-readings", "agent"] as const;
 export type ClaudeRequestKind = (typeof CLAUDE_REQUEST_KINDS)[number];
-export type ClaudeRequestStatus = "pending" | "running" | "done" | "failed";
+export type ClaudeRequestStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 export type ClaudeRequest = {
   id: number;
   project_id: string;
@@ -285,8 +285,23 @@ export type ClaudeRequest = {
   created_at: string;
   updated_at: string;
 };
-export function addClaudeRequest(r: { projectId: string; videoKey?: string | null; sceneId?: string | null; kind: ClaudeRequestKind; note?: string | null }): ClaudeRequest {
+/**
+ * Thêm yêu cầu cho Claude Code – không tạo trùng: nếu đã có yêu cầu cùng loại cho cùng video/cảnh đang chờ hoặc đang làm thì trả lại
+ * yêu cầu đó (duplicate). Riêng "sửa cảnh" đang chờ mà nội dung khác → gộp nội dung vào yêu cầu cũ (merged).
+ */
+export function addClaudeRequest(r: { projectId: string; videoKey?: string | null; sceneId?: string | null; kind: ClaudeRequestKind; note?: string | null }): ClaudeRequest & { duplicate?: boolean; merged?: boolean } {
   const t = now();
+  const same = getDb()
+    .prepare("SELECT * FROM claude_requests WHERE project_id=? AND kind=? AND video_key IS ? AND scene_id IS ? AND status IN ('pending','running') ORDER BY id DESC LIMIT 1")
+    .get(r.projectId, r.kind, r.videoKey ?? null, r.sceneId ?? null) as ClaudeRequest | undefined;
+  if (same) {
+    const note = r.note?.trim();
+    if (r.kind === "revise" && note && same.status === "pending" && !(same.note ?? "").includes(note)) {
+      getDb().prepare("UPDATE claude_requests SET note=?, updated_at=? WHERE id=?").run(`${same.note ?? ""}\n• ${note}`.trim(), t, same.id);
+      return { ...getClaudeRequest(same.id)!, merged: true };
+    }
+    return { ...same, duplicate: true };
+  }
   const info = getDb()
     .prepare("INSERT INTO claude_requests (project_id, video_key, scene_id, kind, note, status, created_at, updated_at) VALUES (?,?,?,?,?,'pending',?,?)")
     .run(r.projectId, r.videoKey ?? null, r.sceneId ?? null, r.kind, r.note ?? null, t, t);

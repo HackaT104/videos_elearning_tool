@@ -201,3 +201,23 @@ describe("lệnh pnpm cvs", () => {
     expect((await run("fail", "1")).code).toBe(64);
   });
 });
+
+describe("hàng đợi Claude Code: không tạo việc trùng", () => {
+  it("cùng loại + video đang chờ → trả lại việc cũ; sửa cảnh khác nội dung → gộp; huỷ được việc đang chờ", async () => {
+    const { addClaudeRequest, createProject, getClaudeRequest } = await import("@cvs/db");
+    const pid = createProject("Trùng", "TR", ["L1"]).id;
+    const a = addClaudeRequest({ projectId: pid, videoKey: "V1", kind: "agent" });
+    const b = addClaudeRequest({ projectId: pid, videoKey: "V1", kind: "agent" });
+    expect(b.id).toBe(a.id);
+    expect(b.duplicate).toBe(true);
+    expect(addClaudeRequest({ projectId: pid, videoKey: "V2", kind: "agent" }).id).not.toBe(a.id);
+    const r1 = addClaudeRequest({ projectId: pid, videoKey: "V1", sceneId: "s1", kind: "revise", note: "chữ to hơn" });
+    const r2 = addClaudeRequest({ projectId: pid, videoKey: "V1", sceneId: "s1", kind: "revise", note: "đổi màu nhấn" });
+    expect(r2.id).toBe(r1.id);
+    expect(r2.merged).toBe(true);
+    expect(getClaudeRequest(r1.id)!.note).toContain("đổi màu nhấn");
+    const res = await app.request(`/api/claude-code/requests/${a.id}`, { method: "PATCH", body: JSON.stringify({ status: "cancelled" }), headers: { "content-type": "application/json" } });
+    expect(res.status).toBe(200);
+    expect(addClaudeRequest({ projectId: pid, videoKey: "V1", kind: "agent" }).duplicate).toBeUndefined();
+  });
+});

@@ -473,7 +473,7 @@ app.post("/claude-code/requests", async (c) => {
   if (b.note !== undefined && (typeof b.note !== "string" || b.note.length > 4000)) return c.json({ error: '"note" phải là chuỗi ≤ 4000 ký tự' }, 400);
   const req = addClaudeRequest({ projectId: b.projectId, videoKey: b.videoKey ?? null, sceneId: b.sceneId ?? null, kind: b.kind as ClaudeRequestKind, note: b.note?.trim() || null });
   // {run: true} (người dùng đã đồng ý) hoặc bật "tự chạy không hỏi" → Claude Code chạy ngay trên máy này
-  const run = b.run === true || claudeCodeSettings().auto ? startClaudeRun() : null;
+  const run = !req.duplicate && (b.run === true || claudeCodeSettings().auto) ? startClaudeRun() : null;
   return c.json({ ...req, run });
 });
 app.get("/claude-code/requests", (c) => c.json(listClaudeRequests({ status: c.req.query("status"), projectId: c.req.query("projectId"), videoKey: c.req.query("videoKey") })));
@@ -481,7 +481,8 @@ app.patch("/claude-code/requests/:rid", async (c) => {
   const id = Number(c.req.param("rid"));
   const b = await c.req.json().catch(() => ({}));
   if (!getClaudeRequest(id)) return c.json({ error: "Không có yêu cầu" }, 404);
-  if (!["pending", "running", "done", "failed"].includes(b.status)) return c.json({ error: '"status" phải là done | failed | pending | running' }, 400);
+  if (!["pending", "running", "done", "failed", "cancelled"].includes(b.status)) return c.json({ error: '"status" phải là done | failed | pending | running | cancelled' }, 400);
+  if (b.status === "cancelled" && getClaudeRequest(id)!.status !== "pending") return c.json({ error: "Chỉ huỷ được việc đang chờ" }, 400);
   if (b.message !== undefined && typeof b.message !== "string") return c.json({ error: '"message" phải là chuỗi' }, 400);
   return c.json(updateClaudeRequest(id, { status: b.status, message: b.message?.slice(0, 4000) ?? null }));
 });

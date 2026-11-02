@@ -256,7 +256,17 @@ export function startClaudeRun(o: { timeoutMs?: number } = {}): RunStart {
   }
   const bin = findClaudeBin();
   if (!bin) return { started: false, reason: "Chưa cài Claude Code trên máy này" };
-  const pending = listClaudeRequests({ status: "pending" });
+  // việc trùng (cùng loại + video + cảnh, bấm nhiều lần từ trước) → chỉ làm một lần, các bản sau đánh dấu huỷ
+  const seen = new Set<string>();
+  const pending = listClaudeRequests({ status: "pending" }).filter((r) => {
+    const k = `${r.project_id}|${r.kind}|${r.video_key ?? ""}|${r.scene_id ?? ""}`;
+    if (r.kind !== "revise" && seen.has(k)) {
+      updateClaudeRequest(r.id, { status: "cancelled", message: "Trùng với việc đã gửi trước – chỉ làm một lần" });
+      return false;
+    }
+    seen.add(k);
+    return true;
+  });
   if (!pending.length) return { started: false, reason: "Không có yêu cầu nào đang chờ" };
   st.again = false;
   st.ids = pending.map((r) => r.id);

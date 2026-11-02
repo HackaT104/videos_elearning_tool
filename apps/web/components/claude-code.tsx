@@ -8,7 +8,7 @@ import { useAction, useApi } from "@/lib/hooks";
 import { Badge, Msg } from "@/components/ui";
 
 export type CcKind = "revise" | "design-video" | "illustration" | "custom-scene" | "fix-readings" | "review-readings" | "agent";
-type CcStatus = "pending" | "running" | "done" | "failed";
+type CcStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 type CcReq = { id: number; project_id: string; video_key: string | null; scene_id: string | null; kind: CcKind; note: string | null; status: CcStatus; message: string | null; created_at: string };
 type RunStart = { started: boolean; queued?: boolean; reason?: string } | null;
 export type Runner = {
@@ -21,7 +21,7 @@ export type CcInput = { pid: string; kind: CcKind; videoKey?: string; sceneId?: 
 export const CC_PROMPT = "Xử lý các yêu cầu đang chờ của Course Video Studio";
 const KIND: Record<CcKind, string> = { revise: "Sửa cảnh", "design-video": "Thiết kế lại cảnh", illustration: "Vẽ minh hoạ", "custom-scene": "Cảnh tùy biến", "fix-readings": "Sửa cách đọc", "review-readings": "Rà soát cách đọc", agent: "Làm trọn video" };
 const WHAT: Record<CcKind, string> = { revise: "sửa cảnh theo yêu cầu của bạn", "design-video": "thiết kế lại các cảnh", illustration: "vẽ hình minh hoạ", "custom-scene": "viết mã cảnh tùy biến", "fix-readings": "sửa cách đọc", "review-readings": "đọc mọi câu và đề xuất cách đọc", agent: "sửa cách đọc, thiết kế cảnh, soát hình rồi render" };
-const STATUS: Record<CcStatus, readonly [string, "amber" | "blue" | "green" | "red"]> = { pending: ["Chờ Claude Code", "amber"], running: ["Claude Code đang làm…", "blue"], done: ["Xong", "green"], failed: ["Lỗi", "red"] };
+const STATUS: Record<CcStatus, readonly [string, "amber" | "blue" | "green" | "red" | "slate"]> = { pending: ["Chờ Claude Code", "amber"], running: ["Claude Code đang làm…", "blue"], done: ["Xong", "green"], failed: ["Lỗi", "red"], cancelled: ["Đã huỷ", "slate"] };
 const ready = (r: Runner | null) => !!r?.installed && r.loggedIn !== false;
 const runMsg = (run: RunStart) => (run?.started ? "Claude Code đang làm trên máy này – trạng thái hiện bên dưới" : run?.queued ? "Đã thêm vào hàng đợi – Claude Code làm ngay sau việc đang chạy" : `Đã gửi vào hàng đợi${run?.reason ? ` (${run.reason})` : ""}`);
 
@@ -135,10 +135,14 @@ export function useClaudeCode(onDone?: (msg: string) => void) {
   }, []);
   const send = (r: CcInput, run: boolean) =>
     a.run(async () => {
-      const res = await api<{ run: RunStart }>("/claude-code/requests", { method: "POST", json: { projectId: r.pid, kind: r.kind, videoKey: r.videoKey, sceneId: r.sceneId, note: r.note, run } });
+      const res = await api<{ run: RunStart; duplicate?: boolean; merged?: boolean; status: CcStatus }>("/claude-code/requests", { method: "POST", json: { projectId: r.pid, kind: r.kind, videoKey: r.videoKey, sceneId: r.sceneId, note: r.note, run } });
       if (run && noAsk) await api("/claude-code/settings", { method: "POST", json: { auto: true } });
       setReq(null);
-      const m = run || res.run ? runMsg(res.run) : "Đã gửi vào hàng đợi – chạy Claude Code khi đã cài và đăng nhập (trang Claude AI)";
+      const m = res.duplicate
+        ? `Việc này đã có trong hàng đợi (${STATUS[res.status][0].toLowerCase()}) – không tạo thêm`
+        : res.merged
+          ? "Đã gộp yêu cầu vào việc sửa cảnh đang chờ"
+          : run || res.run ? runMsg(res.run) : "Đã gửi vào hàng đợi – chạy Claude Code khi đã cài và đăng nhập (trang Claude AI)";
       a.setMsg({ ok: true, text: m });
       onDone?.(m);
     });
@@ -191,9 +195,13 @@ export function ClaudeCodeButton({ pid, kind, videoKey, sceneId, note, what, lab
   pid: string; kind: CcKind; videoKey?: string; sceneId?: string; note?: string; what?: string; label?: string; primary?: boolean; disabled?: boolean; title?: string; onSent?: () => void;
 }) {
   const cc = useClaudeCode(() => onSent?.());
+  // đã có việc giống hệt đang chờ/đang làm → khoá nút (riêng "sửa cảnh" vẫn gửi được: nội dung mới được gộp vào việc đang chờ)
+  const q = new URLSearchParams({ projectId: pid, status: "pending,running", ...(videoKey ? { videoKey } : {}) });
+  const act = useApi<CcReq[]>(`/claude-code/requests?${q}`, 4000);
+  const busy = kind !== "revise" ? act.data?.find((r) => r.kind === kind && (r.video_key ?? undefined) === videoKey && (r.scene_id ?? undefined) === sceneId) : undefined;
   return (
     <>
-      <button type="button" className={`btn ${primary ? "btn-primary" : ""}`} disabled={disabled} title={title ?? "Claude Code (gói Claude đã đăng ký, không tốn phí API) làm việc này trên máy này"} onClick={() => cc.ask({ pid, kind, videoKey, sceneId, note, what })}>{label}</button>
+      <button type="button" className={`btn ${primary && !busy ? "btn-primary" : ""}`} disabled={disabled || !!busy} title={busy ? "Việc này đã được giao cho Claude Code – xem trạng thái bên dưới" : title ?? "Claude Code (gói Claude đã đăng ký, không tốn phí API) làm việc này trên máy này"} onClick={() => cc.ask({ pid, kind, videoKey, sceneId, note, what })}>{busy ? STATUS[busy.status][0] : label}</button>
       {cc.dialog}
       {cc.msg && !cc.msg.ok && !cc.dialog && <Msg msg={cc.msg} />}
     </>
@@ -248,24 +256,45 @@ export function ClaudeCodeStatus({ pid, videoKey, sceneId, kinds, limit = 3, how
   const running = rows.some((r) => r.status === "running");
   const runner = useApi<Runner>(open.length ? "/claude-code/runner" : null, running ? 2000 : 6000);
   const a = useAction();
-  const shown = [...open, ...rows.filter((r) => r.status !== "pending" && r.status !== "running")].slice(0, Math.max(limit, open.length));
+  // gộp các việc trùng (cùng loại + video + cảnh): việc đang mở hiện một dòng kèm số lần trùng; việc đã xong chỉ hiện lần mới nhất
+  const keyOf = (r: CcReq) => `${r.kind}|${r.video_key ?? ""}|${r.scene_id ?? ""}`;
+  const groups = new Map<string, CcReq[]>();
+  for (const r of [...open.filter((r) => r.status === "running"), ...open.filter((r) => r.status === "pending"), ...rows.filter((r) => r.status !== "pending" && r.status !== "running")]) {
+    const k = keyOf(r) + (r.status === "pending" || r.status === "running" ? "" : "|xong");
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(r);
+  }
+  const doneKeys = new Set([...groups.keys()].filter((k) => !k.endsWith("|xong")).map((k) => `${k}|xong`));
+  const items = [...groups.entries()].filter(([k]) => !doneKeys.has(k)).map(([, g]) => g);
+  const shown = items.slice(0, Math.max(limit, items.filter((g) => g[0].status === "pending" || g[0].status === "running").length));
+  const cancel = (ids: number[]) => a.run(async () => { for (const id of ids) await api(`/claude-code/requests/${id}`, { method: "PATCH", json: { status: "cancelled", message: "Người dùng huỷ" } }); reload(); });
   if (!shown.length) return null;
   const pending = open.length > 0 && !running;
   return (
     <div className="msg mt-3 rounded-lg bg-paper p-3 shadow-[0_0_0_1px_rgb(19_34_43/0.08)]">
       <div className="text-[13px] font-semibold">Việc đã gửi cho Claude Code</div>
       <ul className="mt-1.5 space-y-1.5" aria-live="polite">
-        {shown.map((r) => (
+        {shown.map((g) => {
+          const r = g[0];
+          const extra = g.filter((x) => x.status === "pending" && x.id !== r.id);
+          return (
           <li key={r.id} className="text-[13px]">
             <span className="flex flex-wrap items-center gap-1.5">
               <Badge tone={STATUS[r.status][1]}>{STATUS[r.status][0]}</Badge>
               <span className="font-medium">{KIND[r.kind] ?? r.kind}</span>
               <span className="num text-soft">{[r.video_key ?? (pid ? "mọi video" : r.project_id), r.scene_id].filter(Boolean).join(" · ")}</span>
+              {extra.length > 0 && <span className="text-soft">(+{extra.length} lần bấm trùng)</span>}
+              {(r.status === "pending" || extra.length > 0) && (
+                <button type="button" className="ml-auto min-h-8 px-1 text-[12px] text-soft underline" disabled={a.busy} onClick={() => cancel(r.status === "pending" ? g.filter((x) => x.status === "pending").map((x) => x.id) : extra.map((x) => x.id))}>
+                  {r.status === "pending" ? "Huỷ" : "Huỷ việc trùng"}
+                </button>
+              )}
             </span>
             {r.note && <span className="mt-0.5 block text-soft">«{r.note.length > 140 ? `${r.note.slice(0, 140)}…` : r.note}»</span>}
             {r.message && r.status !== "running" && <span className="mt-0.5 block">{r.message}</span>}
           </li>
-        ))}
+          );
+        })}
       </ul>
       {log && running && runner.data && <ClaudeCodeLog lines={runner.data.lastLog} />}
       {pending && runner.data && (
