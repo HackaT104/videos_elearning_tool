@@ -1,8 +1,8 @@
 // Cầu nối Claude Code: khi không có Claude API, Claude Code (gói đã đăng ký) làm phần AI qua lệnh `pnpm cvs`.
 // Prompt lấy đúng từ @cvs/ai (cùng quy tắc với đường API); kết quả ghi vào cảnh qua cùng bộ kiểm như AI trong app.
 
-import type { Scene, SceneDesign } from "@cvs/core";
-import { checkIllustration, customScenePrompt, designErrors, designPrompt, illustrationPrompt, readingsPrompt, type Prompt } from "@cvs/ai";
+import { checkTts, type Scene, type SceneDesign } from "@cvs/core";
+import { checkIllustration, customScenePrompt, designErrors, designPrompt, illustrationPrompt, readingsPrompt, reviewReadingsPrompt, type Prompt } from "@cvs/ai";
 import { getProject, getVideo, setVideoFlags, upsertVideo } from "@cvs/db";
 import { illustrationStyleHints } from "@cvs/engine";
 import { getTheme } from "@cvs/themes";
@@ -75,7 +75,7 @@ function illustrationParams(style: string, font: string | undefined, scene: Scen
   return params;
 }
 
-export type PromptKind = "design" | "illustration" | "custom" | "readings";
+export type PromptKind = "design" | "illustration" | "custom" | "readings" | "review-readings";
 
 /** Prompt mà Claude API sẽ nhận cho việc này – Claude Code làm theo đúng prompt đó để chất lượng như đường API. */
 export async function claudeCodePrompt(projectId: string, key: string, kind: PromptKind, sceneId?: string, note?: string): Promise<Prompt> {
@@ -83,8 +83,13 @@ export async function claudeCodePrompt(projectId: string, key: string, kind: Pro
   if (!row) throw new Error("Không tìm thấy video");
   const video = row.data;
   if (kind === "readings") {
-    const items = readingIssues(video).map((i) => ({ id: `${i.scene}#${i.idx}`, text: i.text, tts: i.tts, warnings: i.warnings }));
+    const items = readingIssues(video).filter((i) => !i.suggested).map((i) => ({ id: `${i.scene}#${i.idx}`, text: i.text, tts: i.tts, warnings: i.warnings }));
     return readingsPrompt(items, `${video.title}. ${video.context ?? ""}`);
+  }
+  if (kind === "review-readings") {
+    // shortcut: một prompt cho cả video (đường API chia lượt ≤ REVIEW_BATCH câu) – Claude Code đọc được prompt dài
+    const items = video.scenes.flatMap((s) => s.sentences.map((x, idx) => ({ id: `${s.id}#${idx}`, text: x.text, tts: x.tts, warnings: checkTts(x.tts) })));
+    return reviewReadingsPrompt(items, `${video.title}. ${video.context ?? ""}`);
   }
   const i = video.scenes.findIndex((s) => s.id === sceneId);
   if (i < 0) throw new Error(`Không có cảnh ${sceneId ?? "(thiếu mã cảnh)"}`);

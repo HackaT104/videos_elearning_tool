@@ -62,7 +62,7 @@ export type VideoRow = {
   qa: unknown | null;
   updated_at: string;
 };
-export type JobKind = "agent" | "produce" | "voice" | "visual" | "render" | "design" | "ai-script" | "theme-preview" | "voice-sample" | "revise";
+export type JobKind = "agent" | "produce" | "voice" | "visual" | "render" | "design" | "ai-script" | "theme-preview" | "voice-sample" | "revise" | "reading-review";
 export type JobStatus = "queued" | "running" | "done" | "failed" | "paused" | "canceled";
 export type Job = {
   id: number;
@@ -266,7 +266,7 @@ export function listVoices(provider?: string) {
 }
 
 // ---------- yêu cầu AI chờ Claude Code (gói Claude đã đăng ký, không dùng API) ----------
-export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "agent"] as const;
+export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "review-readings", "agent"] as const;
 export type ClaudeRequestKind = (typeof CLAUDE_REQUEST_KINDS)[number];
 export type ClaudeRequestStatus = "pending" | "done" | "failed";
 export type ClaudeRequest = {

@@ -28,6 +28,8 @@ export type Sentence = {
   tts: string;
   /** true khi người dùng đã sửa tay cột tts – không tự chuẩn hóa đè lên. */
   ttsLocked?: boolean;
+  /** Cách đọc Claude đề xuất – chưa áp dụng cho tới khi người dùng chấp nhận. */
+  suggest?: { tts: string; reason?: string; glossary?: { term: string; reading: string }[]; by: "ai" | "claude-code" };
 };
 
 /** Mốc kích hoạt một phần tử: tại phân số f (0..1) của câu thứ cue trong cảnh. */

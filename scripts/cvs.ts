@@ -12,8 +12,8 @@ Xem
   videos <pid>                             Các video của dự án (trạng thái, QA, job đang chạy)
   video <pid> <key>                        Kịch bản + thiết kế + timing từng cảnh
   templates                                Thư viện template (schema, ví dụ), biểu tượng, kiểu chữ chuyển động, phong cách, phông
-  readings <pid> [key]                     Các câu còn cảnh báo cách đọc
-  prompt <design|illustration|custom|readings> <pid> <key> [sid] [--note "..."]
+  readings <pid> [key] [--warn]            Mọi câu (id, lời thoại, cách đọc, cảnh báo, đề xuất đang chờ); --warn: chỉ câu còn cảnh báo
+  prompt <design|illustration|custom|readings|review-readings> <pid> <key> [sid] [--note "..."]
                                            In đúng prompt mà Claude API sẽ nhận cho việc này (làm theo prompt đó)
   status <pid>                             Tóm tắt video + job + yêu cầu đang chờ của dự án
 
@@ -22,6 +22,8 @@ Sửa
   set-svg <pid> <key> <sid> <svg-file|->      Ghi hình minh hoạ SVG cho cảnh illustration [--brief "..."]
   set-custom <pid> <key> <sid> <code-file|->  Ghi mã cảnh tùy biến (HyperFrames HTML / Remotion TSX), kiểm bằng lint [--note "..."]
   set-reading <pid> <key> <sid> <idx> <cách đọc...>  Sửa cách đọc một câu (khoá như sửa tay)
+  suggest-reading <pid> <key> <sid> <idx> <cách đọc...> [--reason "..."] [--glossary "HSE=hát ét ét;PPE=pê pê e"]
+                                           Lưu ĐỀ XUẤT cách đọc (người dùng chấp nhận/bỏ qua trong app; không đổi cách đọc)
 
 Chạy
   check <pid> <key>                        Dựng cảnh + QA (giữ thiết kế đã có), chờ xong, in lỗi QA + ảnh khung từng cảnh
@@ -44,7 +46,7 @@ export type Io = {
   sleep: (ms: number) => Promise<void>;
 };
 
-const VALUE_FLAGS = new Set(["note", "brief", "timeout"]);
+const VALUE_FLAGS = new Set(["note", "brief", "timeout", "reason", "glossary"]);
 
 export function parseArgs(argv: string[]): { pos: string[]; flags: Record<string, string> } {
   const pos: string[] = [];
@@ -185,13 +187,13 @@ export async function main(argv: string[], io: Io): Promise<number> {
         return 0;
       }
       case "readings": {
-        need(a, 1, "readings <pid> [key]");
-        const rows = (await api.get(`/projects/${enc(a[0])}/reading`)).filter((r: any) => r.warnings.length && !r.locked && (!a[1] || r.key === a[1]));
-        json(io, rows.map((r: any) => ({ key: r.key, scene: r.scene, idx: r.idx, text: r.text, tts: r.tts, warnings: r.warnings })));
+        need(a, 1, "readings <pid> [key] [--warn]");
+        const rows = (await api.get(`/projects/${enc(a[0])}/reading`)).filter((r: any) => (!flags.warn || (r.warnings.length && !r.locked)) && (!a[1] || r.key === a[1]));
+        json(io, rows.map((r: any) => ({ key: r.key, id: `${r.scene}#${r.idx}`, scene: r.scene, idx: r.idx, text: r.text, tts: r.tts, locked: r.locked, warnings: r.warnings, suggest: r.suggest ?? undefined })));
         return 0;
       }
       case "prompt": {
-        need(a, 3, "prompt <design|illustration|custom|readings> <pid> <key> [sid] [--note \"...\"]");
+        need(a, 3, "prompt <design|illustration|custom|readings|review-readings> <pid> <key> [sid] [--note \"...\"]");
         const p = await api.post("/claude-code/prompt", { kind: a[0], projectId: a[1], videoKey: a[2], sceneId: a[3], note: flags.note });
         io.out(`===== SYSTEM =====\n${p.system}\n\n===== NỘI DUNG =====\n${p.content}`);
         return 0;
@@ -244,6 +246,18 @@ export async function main(argv: string[], io: Io): Promise<number> {
         const idx = Number(a[3]);
         if (!Number.isInteger(idx) || idx < 0) throw new UsageError("idx phải là số thứ tự câu (từ 0)");
         json(io, await api.patch(`${vpath(a[0], a[1])}/sentence`, { scene: a[2], idx, tts: a.slice(4).join(" ") }));
+        return 0;
+      }
+      case "suggest-reading": {
+        need(a, 5, "suggest-reading <pid> <key> <sid> <idx> <cách đọc...> [--reason \"...\"] [--glossary \"term=reading;...\"]");
+        const idx = Number(a[3]);
+        if (!Number.isInteger(idx) || idx < 0) throw new UsageError("idx phải là số thứ tự câu (từ 0)");
+        const glossary = flags.glossary?.split(";").filter((x) => x.trim()).map((x) => {
+          const [term, ...rest] = x.split("=");
+          if (!term?.trim() || !rest.join("=").trim()) throw new UsageError(`--glossary cần dạng "cụm=cách đọc" (mục: "${x}")`);
+          return { term: term.trim(), reading: rest.join("=").trim() };
+        });
+        json(io, await api.patch(`${vpath(a[0], a[1])}/sentence`, { scene: a[2], idx, suggest: { tts: a.slice(4).join(" "), reason: flags.reason, glossary, by: "claude-code" } }));
         return 0;
       }
       case "check": {

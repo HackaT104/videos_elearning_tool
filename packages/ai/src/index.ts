@@ -329,13 +329,17 @@ export async function reviseScene(video: Video, scene: Scene, note: string, T?: 
   return designScene(video, scene, T, note);
 }
 
-// ---------------- Sửa cách đọc (agent) ----------------
+// ---------------- Sửa / rà soát cách đọc ----------------
 
+export type ReadingItem = { id: string; text: string; tts: string; warnings: string[] };
 export type ReadingFix = { id: string; tts: string; glossary?: { term: string; reading: string }[]; note?: string };
+export type ReadingSuggestion = { id: string; tts: string; reason?: string; glossary?: { term: string; reading: string }[] };
 
-export function readingsPrompt(items: { id: string; text: string; tts: string; warnings: string[] }[], context = ""): Prompt {
+const READING_RULES = `Bạn chuẩn hoá văn bản cho máy đọc tiếng Việt (TTS VieNeu/CIT) trong khóa học e-learning. Viết lại "tts" để máy đọc đúng: số → chữ (kiểu Việt: 423,9 → "bốn trăm hai mươi ba phẩy chín"; 2,78 → "hai phẩy bảy mươi tám"; 60% → "sáu mươi phần trăm"; phiên bản 5.0 → "năm chấm không"), ngày tháng → "ngày … tháng … năm …", đơn vị (kg → "ki lô gam", m² → "mét vuông"), ký hiệu (CO₂ → "xê ô hai"), viết tắt đọc theo chữ cái tiếng Việt (VCS → "vê xê ét") hoặc đọc nghĩa nếu quen dùng (GHG → "khí nhà kính"), thuật ngữ tiếng Anh → phiên âm tiếng Việt dễ đọc hoặc từ tiếng Việt tương đương đúng chuyên ngành. Mã tiêu chuẩn đọc như giảng viên Việt Nam hay nói trên lớp: "ISO" → "i sô", số hiệu đọc thành số (ISO 45001 → "i sô bốn lăm nghìn không trăm linh một", ISO 9001 → "i sô chín nghìn không trăm linh một"), năm ban hành sau dấu hai chấm đọc "năm hai nghìn không trăm mười tám"; cùng một mã thì đọc giống nhau trong cả khóa. Giữ nguyên ý, không thêm bớt nội dung, giữ nguyên thẻ [nghỉ …], [cười]. ${RULES}`;
+
+export function readingsPrompt(items: ReadingItem[], context = ""): Prompt {
   return {
-    system: `Bạn chuẩn hoá văn bản cho máy đọc tiếng Việt (TTS) trong khóa học e-learning. Viết lại "tts" để máy đọc đúng: số → chữ (kiểu Việt: 423,9 → "bốn trăm hai mươi ba phẩy chín"; phiên bản 5.0 → "năm chấm không"), ngày tháng → "ngày … tháng … năm …", ký hiệu (CO₂ → "xê ô hai"), viết tắt đọc theo chữ cái tiếng Việt (VCS → "vê xê ét") hoặc đọc nghĩa nếu quen dùng (GHG → "khí nhà kính"), thuật ngữ tiếng Anh → phiên âm tiếng Việt dễ đọc hoặc từ tiếng Việt tương đương đúng chuyên ngành. Giữ nguyên ý, không thêm bớt nội dung, giữ nguyên thẻ [nghỉ …], [cười]. ${RULES}`,
+    system: READING_RULES,
     content: `Ngữ cảnh khóa học: ${context.slice(0, 2000)}
 
 Các câu cần sửa (JSON):
@@ -347,8 +351,51 @@ Trả về DUY NHẤT JSON: {"fixes": [{"id": string, "tts": string, "glossary":
 }
 
 /** Đề xuất cách đọc tiếng Việt cho các câu còn chữ số / viết tắt / từ tiếng Anh. Không đổi nghĩa, không thêm bớt ý. */
-export async function fixReadings(items: { id: string; text: string; tts: string; warnings: string[] }[], context = ""): Promise<ReadingFix[]> {
+export async function fixReadings(items: ReadingItem[], context = ""): Promise<ReadingFix[]> {
   if (items.length === 0) return [];
   const r = await askJson<{ fixes: ReadingFix[] }>({ ...readingsPrompt(items, context), effort: "medium" }, (v) => (Array.isArray(v.fixes) ? [] : ["Thiếu fixes"]));
   return r.fixes.filter((f) => items.some((i) => i.id === f.id) && f.tts?.trim());
+}
+
+/** Số câu tối đa mỗi lần gọi khi rà soát (video dài chia nhiều lượt). */
+export const REVIEW_BATCH = 60;
+
+/** Prompt rà soát MỌI câu (dùng chung cho Claude API và Claude Code): chỉ trả câu mà máy sẽ đọc sai/không tự nhiên. */
+export function reviewReadingsPrompt(items: ReadingItem[], context = ""): Prompt {
+  return {
+    system: READING_RULES,
+    content: `Ngữ cảnh khóa học: ${context.slice(0, 2000)}
+
+Hãy đọc và rà soát TỪNG câu dưới đây. "text" là lời thoại hiển thị (không được đổi), "tts" là cách đọc hiện tại gửi cho máy đọc, "warnings" là cảnh báo của bộ kiểm theo luật (có thể thiếu hoặc báo nhầm).
+Tìm mọi chỗ máy đọc tiếng Việt sẽ đọc SAI hoặc KHÔNG TỰ NHIÊN, kể cả câu không có cảnh báo: số/ngày/đơn vị/phần trăm đọc sai hoặc đổi nghĩa so với "text", viết tắt chưa đánh vần/chưa đọc nghĩa (HSE, ILO, PPE…), từ tiếng Anh, mã tiêu chuẩn (ISO…), ký hiệu, cách đọc ngượng hoặc sai so với cách giảng viên Việt Nam nói.
+Không đề xuất khi cách đọc hiện tại đã ổn (vd. "các bon" cho carbon là được). Không đổi ý, không thêm bớt nội dung, giữ nguyên thẻ [nghỉ …], [cười].
+
+Các câu (JSON):
+${JSON.stringify(items, null, 1)}
+
+Trả về DUY NHẤT JSON: {"suggestions": [{"id": string, "tts": string, "reason": string, "glossary": [{"term": string, "reading": string}]}]}
+- CHỈ gồm các câu cần đổi; "tts" là TOÀN BỘ câu đã sửa; mảng rỗng nếu mọi câu đều ổn.
+- "reason": một câu tiếng Việt ngắn nói vì sao (vd. "HSE đọc theo chữ cái", "ISO 45001 giảng viên quen đọc thành số").
+- "glossary": thuật ngữ nên lưu để dùng lại cho câu khác (term = nguyên văn trong lời thoại); bỏ trống nếu không có.`,
+  };
+}
+
+const tagsOf = (s: string) => (s.match(/\[[^\[\]\n]{1,24}\]/g) ?? []).join(" ");
+
+/** Claude rà soát mọi câu (chia lượt ≤ REVIEW_BATCH câu); chỉ giữ đề xuất hợp lệ: đúng id, khác cách đọc cũ, giữ đủ thẻ [nghỉ …]. */
+export async function reviewReadings(items: ReadingItem[], context = "", onBatch?: (done: number, total: number) => void): Promise<ReadingSuggestion[]> {
+  const out: ReadingSuggestion[] = [];
+  for (let i = 0; i < items.length; i += REVIEW_BATCH) {
+    const batch = items.slice(i, i + REVIEW_BATCH);
+    const r = await askJson<{ suggestions: ReadingSuggestion[] }>({ ...reviewReadingsPrompt(batch, context), effort: "medium" }, (v) => (Array.isArray(v.suggestions) ? [] : ["Thiếu suggestions"]));
+    for (const s of r.suggestions) {
+      const it = batch.find((x) => x.id === s.id);
+      const tts = typeof s.tts === "string" ? s.tts.trim() : "";
+      if (!it || !tts || tts === it.tts.trim() || tagsOf(tts) !== tagsOf(it.tts)) continue;
+      const glossary = (Array.isArray(s.glossary) ? s.glossary : []).filter((g) => typeof g?.term === "string" && typeof g?.reading === "string" && g.term.trim() && g.reading.trim());
+      out.push({ id: s.id, tts, reason: typeof s.reason === "string" && s.reason.trim() ? s.reason.trim() : undefined, glossary: glossary.length ? glossary : undefined });
+    }
+    onBatch?.(Math.min(i + REVIEW_BATCH, items.length), items.length);
+  }
+  return out;
 }

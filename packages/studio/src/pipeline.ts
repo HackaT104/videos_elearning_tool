@@ -260,16 +260,19 @@ export const JOB_STEPS: Record<string, StepName[]> = {
   design: ["design", "qa"],
 };
 
-export type ReadingIssue = { scene: string; idx: number; text: string; tts: string; warnings: string[] };
+export type ReadingIssue = { scene: string; idx: number; text: string; tts: string; warnings: string[]; suggested: boolean };
 
-/** Câu chưa sửa tay mà cách đọc còn chữ số / viết tắt / từ tiếng Anh. Câu đã sửa tay (khóa) coi như người dùng đã duyệt. */
+/**
+ * Câu cần soát: chưa sửa tay mà cách đọc còn chữ số / viết tắt / từ tiếng Anh, hoặc có đề xuất của Claude chưa duyệt (kể cả câu đã khoá).
+ * Câu đã sửa tay (khóa) coi như người dùng đã duyệt.
+ */
 export function readingIssues(video: Video): ReadingIssue[] {
   const out: ReadingIssue[] = [];
   for (const s of video.scenes)
     s.sentences.forEach((x, idx) => {
-      if (x.ttsLocked) return;
-      const w = checkTts(x.tts);
-      if (w.length) out.push({ scene: s.id, idx, text: x.text, tts: x.tts, warnings: w });
+      const w = x.ttsLocked ? [] : checkTts(x.tts);
+      if (x.suggest) w.push(`Claude đề xuất đọc «${x.suggest.tts}» – chấp nhận hoặc bỏ qua`);
+      if (w.length) out.push({ scene: s.id, idx, text: x.text, tts: x.tts, warnings: w, suggested: !!x.suggest });
     });
   return out;
 }

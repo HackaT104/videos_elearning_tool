@@ -14,7 +14,7 @@ vi.mock("../src/client", () => ({
   }),
 }));
 
-const { CUSTOM_SCENE_CHECKLIST, MOTION_CHECKLIST, designScene, drawIllustration, reviseScene, writeCustomScene } = await import("../src/index");
+const { CUSTOM_SCENE_CHECKLIST, MOTION_CHECKLIST, REVIEW_BATCH, designScene, drawIllustration, fixReadings, reviewReadings, reviewReadingsPrompt, reviseScene, writeCustomScene } = await import("../src/index");
 const { DESIGN_TEMPLATE_IDS, TEMPLATES } = await import("@cvs/engine");
 
 const video: any = { key: "V1", title: "Tín chỉ carbon", level: "cơ bản", style: undefined, font: undefined, scenes: [] };
@@ -116,5 +116,41 @@ describe("writeCustomScene", () => {
     expect(opts.system).toContain(MOTION_CHECKLIST);
     expect(opts.system).toContain(CUSTOM_SCENE_CHECKLIST);
     expect(opts.system).toContain("hợp đồng thắng");
+  });
+});
+
+describe("rà soát cách đọc", () => {
+  const items = Array.from({ length: 130 }, (_, i) => ({ id: `s1#${i}`, text: `Câu ${i}`, tts: i === 1 ? "Nghỉ [nghỉ 1s] tiếp" : `câu ${i}`, warnings: [] as string[] }));
+  it("prompt: rà soát mọi câu, quy tắc ISO/số/viết tắt, giữ thẻ, chỉ trả câu cần đổi kèm lý do + thuật ngữ", () => {
+    const p = reviewReadingsPrompt([{ id: "s1#0", text: "Hệ thống ISO 45001 và HSE.", tts: "Hệ thống ISO 45001 và HSE.", warnings: ["Còn chữ số: 45001"] }], "An toàn lao động");
+    for (const k of ["ISO 45001", "i sô bốn lăm nghìn không trăm linh một", "2,78", "sáu mươi phần trăm", "[nghỉ …]", "KHÔNG BỊA SỐ LIỆU"]) expect(p.system).toContain(k);
+    for (const k of ["TỪNG câu", "kể cả câu không có cảnh báo", "các bon", '"suggestions"', '"reason"', '"glossary"', "CHỈ gồm các câu cần đổi", "Hệ thống ISO 45001 và HSE.", "An toàn lao động"]) expect(p.content).toContain(k);
+  });
+  it("chia lượt ≤ 60 câu; bỏ đề xuất sai id / trùng cách đọc / mất thẻ [nghỉ]", async () => {
+    const { askJson } = await import("../src/client");
+    const replies = [
+      { suggestions: [{ id: "s1#0", tts: "câu không", reason: "đọc số", glossary: [{ term: "HSE", reading: "hát ét ét" }, { term: "", reading: "x" }] }, { id: "s1#1", tts: "Nghỉ tiếp" }, { id: "s1#2", tts: "câu 2" }, { id: "s9#0", tts: "x" }] },
+      { suggestions: [{ id: "s1#61", tts: "câu sáu mươi mốt", reason: " " }] },
+      { suggestions: [] },
+    ];
+    for (const r of replies) (askJson as any).mockImplementationOnce(async (opts: any, validate: any) => (calls.push({ opts, validate }), r));
+    const progress: number[] = [];
+    const out = await reviewReadings(items, "ctx", (d) => progress.push(d));
+    expect(REVIEW_BATCH).toBe(60);
+    expect(calls).toHaveLength(3);
+    expect(calls[0].opts.content).toContain('"s1#59"');
+    expect(calls[0].opts.content).not.toContain('"s1#60"');
+    expect(calls[2].opts.content).toContain('"s1#129"');
+    expect(calls[0].validate!({})).toEqual(["Thiếu suggestions"]);
+    expect(progress).toEqual([60, 120, 130]);
+    expect(out).toEqual([
+      { id: "s1#0", tts: "câu không", reason: "đọc số", glossary: [{ term: "HSE", reading: "hát ét ét" }] },
+      { id: "s1#61", tts: "câu sáu mươi mốt", reason: undefined, glossary: undefined },
+    ]);
+  });
+  it("fixReadings vẫn dùng prompt sửa (fixes)", async () => {
+    reply = { fixes: [{ id: "s1#0", tts: "câu không" }, { id: "khac", tts: "x" }] };
+    expect(await fixReadings(items.slice(0, 1))).toEqual([{ id: "s1#0", tts: "câu không" }]);
+    expect(calls[0].opts.content).toContain('"fixes"');
   });
 });

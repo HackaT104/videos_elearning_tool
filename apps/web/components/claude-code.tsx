@@ -5,11 +5,11 @@ import { api } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { Badge, Msg } from "@/components/ui";
 
-export type CcKind = "revise" | "design-video" | "illustration" | "custom-scene" | "fix-readings" | "agent";
+export type CcKind = "revise" | "design-video" | "illustration" | "custom-scene" | "fix-readings" | "review-readings" | "agent";
 type CcReq = { id: number; project_id: string; video_key: string | null; scene_id: string | null; kind: CcKind; note: string | null; status: "pending" | "done" | "failed"; message: string | null; created_at: string };
 
 export const CC_PROMPT = "Xử lý các yêu cầu đang chờ của Course Video Studio";
-const KIND: Record<CcKind, string> = { revise: "Sửa cảnh", "design-video": "Thiết kế lại cảnh", illustration: "Vẽ minh hoạ", "custom-scene": "Cảnh tùy biến", "fix-readings": "Sửa cách đọc", agent: "Làm trọn video" };
+const KIND: Record<CcKind, string> = { revise: "Sửa cảnh", "design-video": "Thiết kế lại cảnh", illustration: "Vẽ minh hoạ", "custom-scene": "Cảnh tùy biến", "fix-readings": "Sửa cách đọc", "review-readings": "Rà soát cách đọc", agent: "Làm trọn video" };
 const STATUS = { pending: ["Chờ Claude Code", "amber"], done: ["Xong", "green"], failed: ["Không làm được", "red"] } as const;
 
 /** Nút gửi một việc AI cho Claude Code. */

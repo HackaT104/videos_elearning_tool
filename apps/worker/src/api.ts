@@ -17,6 +17,7 @@ import {
 import {
   AssetError, assetFile, deleteAsset, listAssets, MAX_ASSET_BYTES, saveAsset,
   applySceneEdit, claudeCodePrompt, archiveItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
+  acceptAllReadings, resolveReadingSuggestion, setReadingSuggestion,
 } from "@cvs/studio";
 import {
   CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, ensureZerottsRunning, installCit, installZerotts, restartCit, restartZerotts,
@@ -24,7 +25,7 @@ import {
 } from "@cvs/tts";
 import { DEFAULT_FONT_PAIR, FONT_PAIRS, fontFaceUrlCss, fontFilePath, THEMES, THEME_IDS } from "@cvs/themes";
 import { TEMPLATES, ICON_NAMES, KINETIC_PRESETS } from "@cvs/engine";
-import { aiAvailable } from "@cvs/ai";
+import { aiAvailable, aiBlockedReason } from "@cvs/ai";
 
 const app = new Hono().basePath("/api");
 
@@ -68,7 +69,7 @@ app.get("/tts/status", async (c) => {
   }
   return c.json({ ...st, url: cit.baseUrl, mock: process.env.CVS_TTS_MOCK === "1", manager: citManagerState(), terms: CIT_TERMS_URL });
 });
-app.get("/claude/status", (c) => c.json({ ...claudeAuthStatus(), available: aiAvailable() }));
+app.get("/claude/status", (c) => c.json({ ...claudeAuthStatus(), available: aiAvailable(), blocked: aiBlockedReason() }));
 app.post("/claude/key", async (c) => {
   const { apiKey } = await c.req.json();
   saveClaudeKey(String(apiKey ?? ""));
@@ -351,14 +352,23 @@ app.get("/projects/:id/reading", (c) => {
     for (const s of v.data.scenes)
       for (const [k, x] of s.sentences.entries()) {
         const r = norm(x.text);
-        rows.push({ key: v.key, scene: s.id, idx: k, text: x.text, tts: x.tts, locked: !!x.ttsLocked, changed: x.tts !== x.text, rules: r.rules, warnings: checkTts(x.tts), voice: v.data.voice });
+        rows.push({ key: v.key, scene: s.id, idx: k, text: x.text, tts: x.tts, locked: !!x.ttsLocked, changed: x.tts !== x.text, rules: r.rules, warnings: checkTts(x.tts), suggest: x.suggest ?? null, voice: v.data.voice });
       }
   }
   return c.json(rows);
 });
+// Một câu: {tts} sửa tay · {suggest} lưu đề xuất (không đổi tts) · {action: "accept" | "reject"} duyệt đề xuất.
 app.patch("/projects/:id/videos/:key/sentence", async (c) => {
   const id = c.req.param("id");
-  const b = (await c.req.json()) as { scene: string; idx: number; tts: string };
+  const b = (await c.req.json().catch(() => null)) as { scene: string; idx: number; tts?: string; suggest?: unknown; action?: string } | null;
+  if (!b || typeof b.scene !== "string" || !Number.isInteger(b.idx)) return c.json({ error: 'Cần "scene" và "idx"' }, 400);
+  if (b.suggest !== undefined || b.action !== undefined) {
+    if (b.action !== undefined && !["accept", "reject"].includes(b.action)) return c.json({ error: '"action" phải là accept | reject' }, 400);
+    const err = b.action ? resolveReadingSuggestion(id, c.req.param("key"), b.scene, b.idx, b.action === "accept") : setReadingSuggestion(id, c.req.param("key"), b.scene, b.idx, b.suggest);
+    if (err) return c.json({ error: err }, err === "Không tìm thấy câu" ? 404 : 400);
+    const x = getVideo(id, c.req.param("key"))!.data.scenes.find((s) => s.id === b.scene)!.sentences[b.idx];
+    return c.json({ ok: true, tts: x.tts, warnings: checkTts(x.tts) });
+  }
   const v = getVideo(id, c.req.param("key"));
   const s = v?.data.scenes.find((x) => x.id === b.scene);
   if (!v || !s?.sentences[b.idx]) return c.json({ error: "Không tìm thấy câu" }, 404);
@@ -366,6 +376,14 @@ app.patch("/projects/:id/videos/:key/sentence", async (c) => {
   s.sentences[b.idx] = { ...s.sentences[b.idx], tts: b.tts, ttsLocked: true };
   upsertVideo(id, v.data);
   return c.json({ ok: true, warnings: checkTts(b.tts) });
+});
+// Chấp nhận mọi đề xuất cách đọc của Claude (cả dự án, hoặc một video với {key}).
+app.post("/projects/:id/reading/accept-all", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json().catch(() => ({}));
+  if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  if (b.key !== undefined && (typeof b.key !== "string" || !getVideo(id, b.key))) return c.json({ error: "Không tìm thấy video" }, 404);
+  return c.json({ ok: true, accepted: acceptAllReadings(id, b.key) });
 });
 app.post("/projects/:id/videos/:key/renormalize", (c) => {
   const id = c.req.param("id");
@@ -414,6 +432,9 @@ app.post("/projects/:id/jobs", async (c) => {
   const jobs = keys.map((k) => {
     const active = k ? activeJobFor(id, k) : null;
     if (active && ["agent", "produce", "voice", "visual", "render", "design", "revise"].includes(b.kind)) return active;
+    // rà soát cách đọc: một lượt mỗi dự án
+    const review = b.kind === "reading-review" ? listJobs(id, 50).find((j) => j.kind === "reading-review" && ["queued", "running"].includes(j.status)) : null;
+    if (review) return review;
     return enqueueJob(id, b.kind, k, b.payload ?? {});
   });
   return c.json(jobs);
@@ -453,10 +474,11 @@ app.patch("/claude-code/requests/:rid", async (c) => {
   if (b.message !== undefined && typeof b.message !== "string") return c.json({ error: '"message" phải là chuỗi' }, 400);
   return c.json(updateClaudeRequest(id, { status: b.status, message: b.message?.slice(0, 4000) ?? null }));
 });
-// Prompt đúng như Claude API nhận (design | illustration | custom | readings) – Claude Code làm theo prompt này.
+// Prompt đúng như Claude API nhận (design | illustration | custom | readings | review-readings) – Claude Code làm theo prompt này.
+const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings"];
 app.post("/claude-code/prompt", async (c) => {
   const b = await c.req.json().catch(() => ({}));
-  if (!["design", "illustration", "custom", "readings"].includes(b.kind)) return c.json({ error: '"kind" phải là design | illustration | custom | readings' }, 400);
+  if (!PROMPT_KINDS.includes(b.kind)) return c.json({ error: `"kind" phải là ${PROMPT_KINDS.join(" | ")}` }, 400);
   try {
     return c.json(await claudeCodePrompt(String(b.projectId ?? ""), String(b.videoKey ?? ""), b.kind, b.sceneId, b.note));
   } catch (e) {
