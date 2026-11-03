@@ -30,8 +30,11 @@ const SKIP = [
 export const skipped = (rel) => SKIP.some((r) => r.test(rel));
 
 /** Duyệt và chép; trả về [link, đích] (tương đối, dấu /) cho mọi liên kết thư mục trong ROOT. */
+export const MAX_REL = 180;
+
 export function stage(root, out, log = console.log) {
   const links = [];
+  const longPaths = [];
   let files = 0, bytes = 0;
   const rel = (p) => relative(root, p).split(sep).join("/");
   const walk = (src) => {
@@ -55,6 +58,7 @@ export function stage(root, out, log = console.log) {
       return;
     }
     if (st.isFile()) {
+      if (r.length > MAX_REL) longPaths.push(r);
       copyFileSync(src, dst);
       files++;
       bytes += st.size;
@@ -65,6 +69,9 @@ export function stage(root, out, log = console.log) {
   for (const name of INCLUDE) if (existsSync(join(root, name))) walk(join(root, name));
   // đích của liên kết phải nằm trong payload (có thể bị bỏ theo SKIP ở cấp con)
   const kept = links.filter(([, t]) => existsSync(join(out, ...t.split("/"))));
+  // Windows giới hạn đường dẫn 260 ký tự: chừa ~75 ký tự cho C:\Users\<tên>\AppData\Local\Programs\Course Video Studio\app\
+  const tooLong = longPaths.filter((x) => x.length > MAX_REL).sort((a, b) => b.length - a.length);
+  if (tooLong.length) throw new Error(`${tooLong.length} đường dẫn dài hơn ${MAX_REL} ký tự (sẽ lỗi khi cài trên Windows), ví dụ:\n  ${tooLong.slice(0, 8).join("\n  ")}`);
   writeFileSync(join(out, ".cvs-links.json"), JSON.stringify(kept));
   log(`Payload: ${files} tệp, ${(bytes / 1e6).toFixed(0)} MB, ${kept.length} liên kết → ${out}`);
   return { files, bytes, links: kept };

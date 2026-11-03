@@ -17,7 +17,8 @@ Set-Location $Root
 $Version = (Get-Content (Join-Path $Root "package.json") -Raw | ConvertFrom-Json).version
 $VersionNum = $Version -replace '[-+].*$', ''
 $Repo = if ($env:CVS_UPDATE_REPO) { $env:CVS_UPDATE_REPO } else { "HackaT104/videos_elearning_tool" }
-$Build = Join-Path $Root "packaging\windows\build"
+# Thư mục dựng ngắn ở gốc ổ đĩa: đường dẫn trong node_modules rất dài, Windows/Inno Setup giới hạn 260 ký tự
+$Build = Join-Path ([IO.Path]::GetPathRoot($Root)) "cvsb"
 $Payload = Join-Path $Build "payload"
 $Dist = Join-Path $Root "dist"
 function Step($s) { Write-Host "`n== $s" -ForegroundColor Cyan }
@@ -27,7 +28,8 @@ Step "Phiên bản $Version"
 if (-not $SkipInstall) {
   Step "Cài thư viện (pnpm install --frozen-lockfile)"
   $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
-  pnpm install --frozen-lockfile; Check "pnpm install"
+  # node-linker=hoisted: node_modules phẳng kiểu npm (đường dẫn ngắn hơn nhiều so với .pnpm\<tên-dài>\node_modules\…)
+  pnpm install --frozen-lockfile --config.node-linker=hoisted; Check "pnpm install"
 }
 Step "Dựng giao diện"
 pnpm --filter @cvs/web build; Check "Dựng giao diện"
