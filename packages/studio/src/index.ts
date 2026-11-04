@@ -9,6 +9,8 @@ export * from "./claude-code-runner";
 export * from "./docplan";
 export * from "./subs";
 export * from "./style-gen";
+export * from "./style-docs";
+export * from "./locations";
 export * from "./music";
 export { varietyQa } from "@cvs/qa";
 export * from "./stock";

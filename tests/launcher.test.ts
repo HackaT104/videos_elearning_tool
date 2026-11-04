@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { appPaths, buildEnv, edgeArgs, edgeCandidates, ensureLinks, readUserEnv, startUrl } from "../packaging/windows/launcher.mjs";
+import { applyStorageMove, appPaths, buildEnv, treeStats, edgeArgs, edgeCandidates, ensureLinks, readUserEnv, startUrl } from "../packaging/windows/launcher.mjs";
 import { skipped, stage } from "../packaging/windows/stage.mjs";
 
 const tmp = mkdtempSync(join(tmpdir(), "cvs-launcher-"));
@@ -85,5 +85,44 @@ describe("gom payload + tạo lại liên kết", () => {
     expect(realpathSync(join(out, "node_modules", "a"))).toBe(realpathSync(join(out, "node_modules", ".pnpm", "a@1.0.0", "node_modules", "a")));
     expect(readFileSync(join(out, "node_modules", "a", "index.js"), "utf8")).toContain("module.exports");
     expect(ensureLinks(out)).toEqual({ made: 0, failed: 0 });
+  });
+});
+
+describe("chuyển dữ liệu sang ổ khác", () => {
+  it("không có hẹn → null; có hẹn → chép đủ, ghi storage-path.txt, xoá bản cũ; appPaths đọc đường dẫn mới", async () => {
+    const local = join(tmp, "mv", "Local");
+    const p = appPaths({ LOCALAPPDATA: local }, join(tmp, "mv", "app"), join(tmp, "node.exe"));
+    mkdirSync(join(p.storage, "projects", "a", "render"), { recursive: true });
+    writeFileSync(join(p.storage, "cvs.sqlite"), "db");
+    writeFileSync(join(p.storage, "projects", "a", "render", "v.mp4"), Buffer.alloc(5000, 1));
+    expect(await applyStorageMove(p)).toBeNull();
+    const to = join(tmp, "mv", "D", "Course Video Studio");
+    writeFileSync(join(p.data, "storage-move.json"), JSON.stringify({ to }));
+    const msgs: string[] = [];
+    expect(await applyStorageMove(p, () => {}, (m) => msgs.push(m))).toBe(to);
+    expect(msgs[0]).toMatch(/Đang chuyển dữ liệu \(2 tệp/);
+    expect(treeStats(to)).toEqual({ files: 2, bytes: 5002 });
+    expect(existsSync(p.storage)).toBe(false);
+    expect(existsSync(join(p.data, "storage-move.json"))).toBe(false);
+    const q = appPaths({ LOCALAPPDATA: local }, join(tmp, "mv", "app"), join(tmp, "node.exe"));
+    expect(q.storage).toBe(to);
+    expect(q.logFile).toBe(join(to, "logs", "app.log"));
+    expect(buildEnv({}, q).CVS_APP_DATA).toBe(q.data);
+  });
+  it("đích không trống / nằm trong dữ liệu cũ → lỗi, giữ nguyên dữ liệu, không thử lại", async () => {
+    const local = join(tmp, "mv2", "Local");
+    const p = appPaths({ LOCALAPPDATA: local }, join(tmp, "mv2", "app"), join(tmp, "node.exe"));
+    mkdirSync(p.storage, { recursive: true });
+    writeFileSync(join(p.storage, "cvs.sqlite"), "db");
+    const busy = join(tmp, "mv2", "E");
+    mkdirSync(busy, { recursive: true });
+    writeFileSync(join(busy, "x.txt"), "x");
+    writeFileSync(join(p.data, "storage-move.json"), JSON.stringify({ to: busy }));
+    await expect(applyStorageMove(p)).rejects.toThrow(/không còn trống/);
+    expect(existsSync(join(p.data, "storage-move.json"))).toBe(false);
+    writeFileSync(join(p.data, "storage-move.json"), JSON.stringify({ to: join(p.storage, "con") }));
+    await expect(applyStorageMove(p)).rejects.toThrow(/nằm trong/);
+    expect(readFileSync(join(p.storage, "cvs.sqlite"), "utf8")).toBe("db");
+    expect(existsSync(join(p.data, "storage-path.txt"))).toBe(false);
   });
 });

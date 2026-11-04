@@ -3,7 +3,7 @@
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { serve } from "@hono/node-server";
 import {
   checkTts, createNormalizer, DEFAULT_GLOSSARY, SUB_LANGS, LEVEL_PRESETS, readXlsxHeaders, renormalizeVideo, tierOfLevel, EDGE_VOICES,
@@ -22,7 +22,8 @@ import {
   applyDocPlan, docPlanView, saveDocPlan, saveScriptReply,
   applyOverlayDefaults,
   deleteCustomTheme, deleteStyleVideo, ensureProjectTheme, listCustomThemes, listStyleVideos, loadBrief, previewKey, saveStyleVideo, saveThemeReply, saveThemeToLibrary,
-  setStyleBrief, StyleRefError, styleRefs, tweakCustomTheme, MAX_REF_VIDEO_BYTES,
+  setStyleBrief, StyleRefError, styleRefs, tweakCustomTheme, MAX_REF_VIDEO_BYTES, saveStyleDoc, listStyleDocs, deleteStyleDoc, StyleDocError, MAX_STYLE_DOC_BYTES,
+  checkLocation, dataInfo, defaultVideoDir, listLocations, requestDataMove, setDefaultVideoDir,
 } from "@cvs/studio";
 import { overlayRoutes, overlayStale } from "./api-overlay";
 import { mediaRoutes } from "./api-media";
@@ -344,7 +345,7 @@ const styleGenJob = (id: string) => listJobs(id, 50).find((j) => j.kind === "sty
 app.get("/projects/:id/themes", (c) => {
   const id = c.req.param("id");
   if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
-  return c.json({ ...listCustomThemes(id), brief: loadBrief(id), videos: listStyleVideos(id), job: styleGenJob(id) });
+  return c.json({ ...listCustomThemes(id), brief: loadBrief(id), videos: listStyleVideos(id), docs: listStyleDocs(id), job: styleGenJob(id) });
 });
 // Đề bài (mô tả + ảnh + video mẫu + phong cách gốc); mode "api" → xếp job style-gen. Claude Code: giao diện gửi yêu cầu "style-gen" sau đó.
 app.post("/projects/:id/style-gen", async (c) => {
@@ -384,6 +385,21 @@ app.post("/projects/:id/style-refs/video", async (c) => {
     throw e;
   }
 });
+// Tài liệu phong cách (ZIP/PDF/HTML ≤ 100 MB): gửi thô như video
+app.post("/projects/:id/style-refs/doc", async (c) => {
+  const id = c.req.param("id");
+  if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  if (Number(c.req.header("content-length") ?? 0) > MAX_STYLE_DOC_BYTES) return c.json({ error: "Tài liệu quá lớn (tối đa 100 MB)" }, 413);
+  const body = c.req.raw.body;
+  if (!body) return c.json({ error: "Thiếu nội dung tài liệu" }, 400);
+  try {
+    return c.json(await saveStyleDoc(id, decodeURIComponent(c.req.header("x-file-name") ?? "tai-lieu.zip"), body as unknown as AsyncIterable<Uint8Array>));
+  } catch (e) {
+    if (e instanceof StyleDocError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+app.delete("/projects/:id/style-refs/doc/:did", (c) => (deleteStyleDoc(c.req.param("id"), c.req.param("did")) ? c.json({ ok: true }) : c.json({ error: "Không có tài liệu" }, 404)));
 app.delete("/projects/:id/style-refs/video/:vid", (c) => (deleteStyleVideo(c.req.param("id"), c.req.param("vid")) ? c.json({ ok: true }) : c.json({ error: "Không có video" }, 404)));
 /** Dựng ảnh xem trước cho một phong cách trên cảnh đại diện (cùng bộ ảnh mẫu). */
 const queuePreview = (id: string, style: string) => enqueueJob(id, "theme-preview", previewKey(id), { styles: [style] });
@@ -724,7 +740,37 @@ app.post("/projects/:id/export", async (c) => {
   const b = await c.req.json().catch(() => ({}));
   if (!getProject(c.req.param("id"))) return c.json({ error: "Không tìm thấy dự án" }, 404);
   try {
-    return c.json(await exportProject(c.req.param("id"), { dest: b.dest === undefined || b.dest === null ? undefined : b.dest, extras: b.extras === true }));
+    return c.json(await exportProject(c.req.param("id"), { dest: b.dest === undefined ? undefined : b.dest === null || b.dest === "" ? null : b.dest, extras: b.extras === true }));
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+});
+// ---------- nơi lưu: ổ đĩa / ổ mạng / cloud, thư mục xuất mặc định, chuyển dữ liệu làm việc ----------
+const localOnly = (c: Context) => isLocalRequest(remoteAddr(c), c.req.raw.headers);
+app.get("/storage/locations", (c) => c.json({ locations: listLocations(), videoDir: defaultVideoDir() }));
+app.post("/storage/check", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  try {
+    return c.json(checkLocation(b.path));
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+});
+app.post("/storage/default", async (c) => {
+  if (!localOnly(c)) return c.json({ error: "Chỉ đổi được ngay trên máy tính đang chạy ứng dụng" }, 403);
+  const b = await c.req.json().catch(() => ({}));
+  try {
+    return c.json(setDefaultVideoDir(b.path ?? null));
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+});
+app.get("/storage/data", (c) => c.json(dataInfo()));
+app.post("/storage/data/move", async (c) => {
+  if (!localOnly(c)) return c.json({ error: "Chỉ chuyển được ngay trên máy tính đang chạy ứng dụng" }, 403);
+  const b = await c.req.json().catch(() => ({}));
+  try {
+    return c.json(requestDataMove(b.path ?? null));
   } catch (e) {
     return c.json({ error: (e as Error).message }, 400);
   }

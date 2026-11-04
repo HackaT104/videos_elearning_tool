@@ -25,7 +25,7 @@ Xem
   files <pid>                              Tài liệu đã tải (mã tài liệu, loại, video, đã phân tích chưa)
   doc <pid> <fileId>                       Claude đọc và phân tích tài liệu: in đúng prompt phân tích (dàn ý tài liệu,
                                            khối video đầy đủ, video máy đã bóc, thư viện template) – trả lời bằng set-plan
-  style-refs <pid>                         Tạo phong cách bằng AI: mô tả của người dùng + ĐƯỜNG DẪN TUYỆT ĐỐI ảnh tham chiếu và
+  style-refs <pid>                         Tạo phong cách bằng AI: mô tả của người dùng + ĐƯỜNG DẪN TUYỆT ĐỐI ảnh/PDF tham chiếu (cả tài liệu ZIP/HTML) và
                                            khung trích từ video mẫu (mở từng ảnh bằng công cụ Read)
   prompt style-gen <pid>                   Prompt tạo phong cách (đúng như Claude API nhận, kèm ảnh)
   status <pid>                             Tóm tắt video + job + yêu cầu đang chờ của dự án
@@ -175,7 +175,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       case "style-refs": {
         need(a, 1, "style-refs <pid>");
         const r = await api.get(`/projects/${enc(a[0])}/style-refs`);
-        json(io, { prompt: r.prompt, base: r.base, images: r.images.map((x: any) => ({ path: x.file, name: x.name })), videoFrames: r.video ? r.video.frames.map((f: any) => ({ path: f.file, t: f.t })) : [], video: r.video?.name ?? null, next: `pnpm -s cvs prompt style-gen ${a[0]}` });
+        json(io, { prompt: r.prompt, base: r.base, images: r.images.map((x: any) => ({ path: x.file, name: x.name })), videoFrames: r.video ? r.video.frames.map((f: any) => ({ path: f.file, t: f.t })) : [], video: r.video?.name ?? null, docs: (r.docs ?? []).map((d: any) => ({ name: d.name, kind: d.kind, images: d.images.map((x: any) => ({ path: x.file, label: x.label })), pdfs: d.pdfs.map((f: any) => ({ path: f.file, name: f.name })), notes: d.notes })), next: `pnpm -s cvs prompt style-gen ${a[0]}` });
         return 0;
       }
       case "set-theme": {

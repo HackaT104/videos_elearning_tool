@@ -18,6 +18,7 @@ import { projectThemeIds } from "./style-gen";
 import { assetCredit } from "./assets";
 import { attributionLine, videoCredits } from "./stock";
 import { listMusic } from "./music";
+import { assertWritable, defaultVideoDir } from "./locations";
 
 // ---------- Xuất ----------
 
@@ -40,17 +41,20 @@ export function validateExportDir(input: unknown): string {
   } catch (e) {
     throw new Error(`Không tạo được thư mục: ${(e as Error).message}`);
   }
+  assertWritable(p);
   return p;
 }
 
 /**
- * Xuất video đã duyệt: mặc định vào storage/…/out; có `dest` → <dest>/<tên dự án>/Cap_do_N/ (nhớ thư mục cho lần sau).
+ * Xuất video đã duyệt vào <dest>/<tên dự án>/Cap_do_N/ (nhớ thư mục cho lần sau). `dest` không truyền → thư mục riêng của dự án,
+ * rồi thư mục mặc định chung (Cài đặt); `dest: null` hoặc chưa chọn gì → storage/…/out.
  * `extras`: kèm phụ đề .vtt (mỗi ngôn ngữ một file <mã>.<ngôn ngữ>.vtt) và lời thoại .txt cạnh mỗi MP4.
  */
-export async function exportProject(projectId: string, opts: { onlyApproved?: boolean; dest?: string; extras?: boolean } = {}): Promise<ExportResult> {
+export async function exportProject(projectId: string, opts: { onlyApproved?: boolean; dest?: string | null; extras?: boolean } = {}): Promise<ExportResult> {
   const project = getProject(projectId);
   if (!project) throw new Error("Không tìm thấy dự án");
-  const dest = opts.dest !== undefined ? validateExportDir(opts.dest) : null;
+  const want = opts.dest === undefined ? project.settings.exportDir ?? defaultVideoDir() : opts.dest;
+  const dest = want ? validateExportDir(want) : null;
   const outDir = dest ? join(dest, safeFolderName(project.name)) : paths.out(projectId);
   mkdirSync(outDir, { recursive: true });
   const files: string[] = [];

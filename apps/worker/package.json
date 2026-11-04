@@ -18,5 +18,8 @@
     "@cvs/engine": "workspace:*",
     "@cvs/tts": "workspace:*",
     "@cvs/themes": "workspace:*"
+  },
+  "devDependencies": {
+    "jszip": "^3.10.1"
   }
 }

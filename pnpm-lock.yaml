@@ -164,6 +164,10 @@ importers:
       tsx:
         specifier: ^4.20.5
         version: 4.23.15
+    devDependencies:
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.2
 
   packages/ai:
     dependencies:
@@ -314,6 +318,9 @@ importers:
       '@cvs/tts':
         specifier: workspace:*
         version: link:../tts
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.2
 
   packages/themes:
     dependencies:

@@ -4,15 +4,17 @@
 // - đang chạy rồi → chỉ mở cửa sổ; chưa → mở cửa sổ "Đang khởi động…", chạy worker + giao diện, chờ /api/health;
 // - cửa sổ: Microsoft Edge chế độ ứng dụng (--app), không có Edge → trình duyệt mặc định;
 // - giám sát: worker hoặc giao diện dừng (vd. "Thoát ứng dụng") → dừng nốt phần còn lại; nhật ký: storage\logs\app.log.
+// - người dùng hẹn chuyển dữ liệu sang ổ khác (Cài đặt) → lần mở sau chép storage sang đó, kiểm đủ tệp, ghi storage-path.txt, xoá bản cũ.
 // `node launcher.mjs --quit` (bộ cài/gỡ cài gọi): yêu cầu ứng dụng đang chạy thoát rồi chờ tắt hẳn.
 // Chỉ dùng thư viện có sẵn của Node: tệp này chạy trước khi node_modules được nối (junction) lại.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, copyFileSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cp } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { delimiter, dirname, join, resolve, sep } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseEnv } from "node:util";
 
@@ -21,7 +23,14 @@ export const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", ".
 /** Mọi đường dẫn của bản cài. Dữ liệu luôn nằm ngoài thư mục cài để cập nhật / gỡ cài không mất dự án. */
 export function appPaths(env = process.env, appDir = APP_DIR, nodeExe = process.execPath) {
   const data = env.CVS_DATA_DIR || join(env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "Course Video Studio");
-  const storage = join(data, "storage");
+  // dữ liệu đã chuyển sang ổ khác → storage-path.txt giữ đường dẫn mới
+  let storage = join(data, "storage");
+  try {
+    const moved = readFileSync(join(data, "storage-path.txt"), "utf8").trim();
+    if (moved && isAbsolute(moved)) storage = moved;
+  } catch {
+    /* chưa chuyển */
+  }
   const runtime = join(data, "runtime");
   return {
     appDir,
@@ -47,7 +56,7 @@ export function buildEnv(base, p, user = {}) {
   def("CVS_ZEROTTS_DIR", join(p.runtime, "zerotts"));
   def("CVS_WEB_PORT", "3000");
   def("CVS_API_PORT", "3001");
-  Object.assign(env, { CVS_STORAGE: p.storage, CVS_DESKTOP: "1", TSX_TSCONFIG_PATH: join(p.appDir, "tsconfig.json") });
+  Object.assign(env, { CVS_STORAGE: p.storage, CVS_APP_DATA: p.data, CVS_DESKTOP: "1", TSX_TSCONFIG_PATH: join(p.appDir, "tsconfig.json") });
   // Windows: khoá "Path" không phân biệt hoa thường – sửa đúng khoá đang có, không thêm khoá trùng
   const pathKey = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
   env[pathKey] = [p.nodeDir, env[pathKey]].filter(Boolean).join(delimiter);
@@ -105,6 +114,62 @@ export function ensureLinks(appDir = APP_DIR, log = () => undefined) {
   if (!failed) writeFileSync(stamp, hash);
   log(`Liên kết node_modules: tạo ${made}, lỗi ${failed}`);
   return { made, failed };
+}
+
+/** Số tệp + tổng dung lượng (kiểm bản chép đủ chưa). */
+export function treeStats(d) {
+  let files = 0, bytes = 0;
+  const stack = [d];
+  while (stack.length) {
+    const cur = stack.pop();
+    for (const e of readdirSync(cur, { withFileTypes: true })) {
+      const f = join(cur, e.name);
+      if (e.isDirectory()) stack.push(f);
+      else if (e.isFile()) (files++, (bytes += statSync(f).size));
+    }
+  }
+  return { files, bytes };
+}
+
+/**
+ * Chuyển dữ liệu đã hẹn (storage-move.json do worker ghi): chép sang thư mục mới, kiểm đủ tệp/dung lượng, ghi storage-path.txt,
+ * xoá bản cũ. Lỗi → giữ nguyên dữ liệu cũ (ném lỗi để báo). Không có hẹn → null.
+ */
+export async function applyStorageMove(p, log = () => undefined, status = () => undefined) {
+  const req = join(p.data, "storage-move.json");
+  let to;
+  try {
+    to = JSON.parse(readFileSync(req, "utf8")).to;
+  } catch {
+    return null;
+  }
+  rmSync(req, { force: true }); // chỉ thử một lần – lỗi giữa chừng không lặp lại mỗi lần mở
+  const from = resolve(p.storage);
+  if (typeof to !== "string" || !isAbsolute(to)) throw new Error("Đường dẫn mới không hợp lệ");
+  to = resolve(to);
+  if (to === from || to.startsWith(from + sep) || from.startsWith(to + sep)) throw new Error("Thư mục mới nằm trong thư mục dữ liệu cũ");
+  if (existsSync(to) && readdirSync(to).length) throw new Error(`Thư mục ${to} không còn trống`);
+  const before = treeStats(from);
+  status(`Đang chuyển dữ liệu (${before.files} tệp, ${(before.bytes / 1024 ** 3).toFixed(1)} GB) sang ${to}… Đừng tắt máy.`);
+  log(`Chuyển dữ liệu: ${from} → ${to} (${before.files} tệp, ${before.bytes} byte)`);
+  try {
+    await cp(from, to, { recursive: true, force: false, errorOnExist: false, preserveTimestamps: true });
+    const after = treeStats(to);
+    if (after.files < before.files || after.bytes < before.bytes) throw new Error(`bản chép thiếu (${after.files}/${before.files} tệp)`);
+  } catch (e) {
+    rmSync(to, { recursive: true, force: true });
+    throw new Error(`Không chép được dữ liệu: ${e.message}`);
+  }
+  writeFileSync(join(p.data, "storage-path.txt"), to);
+  const old = `${from}.da-chuyen`;
+  try {
+    renameSync(from, old);
+    rmSync(old, { recursive: true, force: true });
+  } catch (e) {
+    log(`Đã chuyển, nhưng chưa xoá được dữ liệu cũ (${from}): ${e.message}`);
+  }
+  log(`Đã chuyển dữ liệu sang ${to}`);
+  return to;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -166,12 +231,12 @@ main{max-width:520px;padding:24px;text-align:center}h1{font-size:20px;margin:16p
 <main><svg width="56" height="56" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#00469b"/><path d="M200 152v208l168-104z" fill="#fff"/><path d="M120 392h272" stroke="#9be7c8" stroke-width="28" stroke-linecap="round"/></svg>
 <h1 id="t">Đang khởi động Course Video Studio…</h1><p id="m">Lần đầu sau khi cài hoặc cập nhật có thể mất đến một phút.</p><div class="bar" id="b"><i></i></div></main>
 <script>async function poll(){try{const s=await (await fetch("/state",{cache:"no-store"})).json();
-if(s.ready)return location.replace(s.target);if(s.error){document.getElementById("t").textContent="Không khởi động được";const m=document.getElementById("m");m.className="err";m.textContent=s.error;document.getElementById("b").remove();return}}catch{}
+if(s.ready)return location.replace(s.target);if(s.message)document.getElementById("m").textContent=s.message;if(s.error){document.getElementById("t").textContent="Không khởi động được";const m=document.getElementById("m");m.className="err";m.textContent=s.error;document.getElementById("b").remove();return}}catch{}
 setTimeout(poll,700)}poll()</script></html>`;
 
 /** Cửa sổ chờ: máy chủ tạm (127.0.0.1, cổng ngẫu nhiên) – trang hỏi /state cùng nguồn rồi chuyển sang ứng dụng khi sẵn sàng. */
 function splash(target) {
-  const st = { ready: false, error: "", target };
+  const st = { ready: false, error: "", message: "", target };
   const srv = createServer((req, res) => {
     if (req.url === "/state") return res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify(st));
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(SPLASH);
@@ -191,7 +256,7 @@ async function quitRunning(env, log) {
 }
 
 async function main() {
-  const p = appPaths();
+  let p = appPaths();
   mkdirSync(dirname(p.logFile), { recursive: true });
   mkdirSync(p.runtime, { recursive: true });
   try {
@@ -201,7 +266,7 @@ async function main() {
   }
   const log = (s) => appendFileSync(p.logFile, `[${new Date().toISOString()}] [launcher] ${s}\n`);
   if (!existsSync(p.envFile) && existsSync(join(p.appDir, ".env.example"))) copyFileSync(join(p.appDir, ".env.example"), p.envFile);
-  const env = buildEnv(process.env, p, readUserEnv(p.envFile));
+  let env = buildEnv(process.env, p, readUserEnv(p.envFile));
   if (process.argv.includes("--quit")) return quitRunning(env, log);
 
   const target = startUrl(p, env.CVS_WEB_PORT);
@@ -223,6 +288,20 @@ async function main() {
   const sp = splash(target);
   openWindow(await sp.listening, p, log);
   log(`Khởi động ${JSON.parse(readFileSync(join(p.appDir, "package.json"), "utf8")).version} · dữ liệu ${p.data}`);
+  if (existsSync(join(p.data, "storage-move.json"))) {
+    try {
+      if (await applyStorageMove(p, log, (m) => (sp.st.message = m))) {
+        p = appPaths();
+        env = buildEnv(process.env, p, readUserEnv(p.envFile));
+        sp.st.target = startUrl(p, env.CVS_WEB_PORT);
+      }
+      sp.st.message = "";
+    } catch (e) {
+      log(e.message);
+      sp.st.message = `${e.message}. Vẫn dùng thư mục dữ liệu cũ.`;
+      await sleep(5000);
+    }
+  }
   ensureLinks(p.appDir, log);
   // Remotion tải trình duyệt vào <thư mục có package.json gần cwd nhất>/node_modules/.remotion → cwd worker = runtime
   if (!existsSync(join(p.runtime, "package.json"))) writeFileSync(join(p.runtime, "package.json"), '{ "name": "cvs-runtime", "private": true }\n');
@@ -258,7 +337,7 @@ async function main() {
     if (await isRunning(env)) {
       sp.st.ready = true;
       sp.close();
-      return log(`Sẵn sàng: ${target}`);
+      return log(`Sẵn sàng: ${sp.st.target}`);
     }
     await sleep(500);
   }

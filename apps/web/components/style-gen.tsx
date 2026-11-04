@@ -1,6 +1,7 @@
 "use client";
 // "Tạo phong cách bằng AI": mô tả + ảnh/video tham chiếu → Claude (API hoặc Claude Code) dựng phong cách tuỳ chỉnh, máy chủ kiểm
 // (màu hex, tương phản 4,5:1, phông đã cài) rồi dựng ảnh xem trước trên cảnh đại diện. Kết quả: dùng / chỉnh tiếp / lưu thư viện / chỉnh tay.
+import Link from "next/link";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { useAction } from "@/lib/hooks";
@@ -13,8 +14,9 @@ export type CustomRec = {
   draft: { colors: Record<string, string>; fontPair: string }; rationale: string; closest: string; adjustments: Adjust[]; prompt: string; by: "ai" | "claude-code" | "user"; base: string | null; updatedAt: string;
 };
 type StyleVideo = { id: string; name: string; duration: number; frames: { file: string; t: number }[] };
+export type StyleDoc = { id: string; name: string; kind: "zip" | "pdf" | "html"; size: number; images: { file: string; label: string }[]; pdfs: { name: string }[]; notes: string[] };
 type Job = { id: number; status: string; progress: number; message: string | null; error: string | null };
-export type CustomThemes = { project: CustomRec[]; library: CustomRec[]; libraryIds: string[]; brief: { prompt: string; images: string[]; video: string | null; base: string | null; last?: string } | null; videos: StyleVideo[]; job: Job | null };
+export type CustomThemes = { project: CustomRec[]; library: CustomRec[]; libraryIds: string[]; brief: { prompt: string; images: string[]; video: string | null; docs?: string[]; base: string | null; last?: string } | null; videos: StyleVideo[]; docs: StyleDoc[]; job: Job | null };
 
 const EXAMPLES = [
   "Tối giản sang trọng: nền than chì, chữ trắng ngà, một màu vàng đồng để nhấn",
@@ -25,6 +27,62 @@ const EXAMPLES = [
 const IMG_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm"];
 const MAX_IMG = 6;
+const MAX_DOCS = 4;
+const DOC_RE = /\.(zip|pdf|html?)$/i;
+export const STYLE_ACCEPT = [...IMG_TYPES, ...VIDEO_TYPES, ".zip", ".pdf", ".html", ".htm"].join(",");
+export type StyleSel = { images: string[]; video: string | null; docs: string[] };
+
+/** Tải tư liệu phong cách: ảnh → ảnh dự án, video → khung hình, ZIP/PDF/HTML → tài liệu phong cách. Trả lựa chọn mới. */
+export async function uploadStyleFiles(pid: string, files: File[], cur: StyleSel, onStep: (s: StyleSel) => void = () => {}): Promise<StyleSel> {
+  const next = { images: [...cur.images], video: cur.video, docs: [...cur.docs] };
+  for (const f of files) {
+    if (VIDEO_TYPES.includes(f.type) || /\.(mp4|mov|webm)$/i.test(f.name)) {
+      if (f.size > 200 * 1024 * 1024) throw new Error("Video quá lớn (tối đa 200 MB)");
+      next.video = (await api<StyleVideo>(`/projects/${pid}/style-refs/video`, { method: "POST", body: f, headers: { "x-file-name": encodeURIComponent(f.name), "content-type": f.type || "application/octet-stream" } })).id;
+    } else if (DOC_RE.test(f.name)) {
+      if (f.size > 100 * 1024 * 1024) throw new Error(`"${f.name}" quá lớn (tối đa 100 MB)`);
+      const d = await api<StyleDoc>(`/projects/${pid}/style-refs/doc`, { method: "POST", body: f, headers: { "x-file-name": encodeURIComponent(f.name), "content-type": "application/octet-stream" } });
+      if (!next.docs.includes(d.id)) {
+        if (next.docs.length >= MAX_DOCS) throw new Error(`Tối đa ${MAX_DOCS} tài liệu – bỏ bớt rồi thêm`);
+        next.docs.push(d.id);
+      }
+    } else if (IMG_TYPES.includes(f.type)) {
+      if (next.images.length >= MAX_IMG) throw new Error(`Tối đa ${MAX_IMG} ảnh tham chiếu – bỏ bớt ảnh rồi thêm`);
+      if (f.size > 10 * 1024 * 1024) throw new Error(`Ảnh "${f.name}" quá lớn (tối đa 10 MB)`);
+      const fd = new FormData();
+      fd.append("file", f);
+      const r = await api<{ id: string }>(`/projects/${pid}/assets`, { method: "POST", body: fd });
+      if (!next.images.includes(r.id)) next.images.push(r.id);
+    } else throw new Error(`"${f.name}": chỉ nhận ảnh JPG/PNG/WebP, video MP4/MOV/WebM, hoặc ZIP/PDF/HTML`);
+    onStep({ ...next, images: [...next.images], docs: [...next.docs] });
+  }
+  return next;
+}
+
+/** Danh sách tài liệu phong cách đã chọn (tên, số ảnh/PDF, ghi chú màu/phông) + nút bỏ. */
+export function StyleDocList({ docs, onRemove }: { docs: StyleDoc[]; onRemove?: (id: string) => void }) {
+  if (!docs.length) return null;
+  return (
+    <ul className="mt-2 space-y-1.5" aria-label="Tài liệu phong cách">
+      {docs.map((d) => (
+        <li key={d.id} className="rounded-md bg-white px-2 py-1.5 text-[13px] shadow-[0_0_0_1px_rgb(19_34_43/0.1)]">
+          <div className="flex items-center gap-2">
+            <Badge>{d.kind.toUpperCase()}</Badge>
+            <span className="min-w-0 truncate font-medium">{d.name}</span>
+            <span className="num shrink-0 text-soft">{[d.images.length && `${d.images.length} ảnh`, d.pdfs.length && `${d.pdfs.length} PDF`].filter(Boolean).join(" · ")}</span>
+            {onRemove && <button type="button" className="ml-auto min-h-8 shrink-0 px-1 text-[12px] text-danger underline" onClick={() => onRemove(d.id)}>Bỏ</button>}
+          </div>
+          {d.images.length > 0 && (
+            <div className="mt-1 flex gap-1 overflow-x-auto pb-0.5">
+              {d.images.slice(0, 6).map((x) => <img key={x.file} src={fileUrl(x.file)} alt={x.label} loading="lazy" className="h-10 w-[72px] shrink-0 rounded object-cover" />)}
+            </div>
+          )}
+          {d.notes.length > 0 && <p className="mt-1 text-[12px] text-soft">{d.notes.join(" · ")}</p>}
+        </li>
+      ))}
+    </ul>
+  );
+}
 const SWATCH = [["bg", "Nền"], ["card", "Thẻ"], ["ink", "Chữ"], ["inkSoft", "Chữ phụ"], ["accent", "Nhấn"], ["alt", "Phụ"], ["money", "Giá trị"], ["warn", "Rủi ro"], ["highlight", "Tô"]] as const;
 const TWEAK = [["bg", "Nền"], ["card", "Thẻ"], ["ink", "Chữ"], ["accent", "Nhấn"], ["alt", "Phụ"], ["warn", "Rủi ro"]] as const;
 const ROLE_VI: Record<string, string> = Object.fromEntries([...SWATCH, ["bg2", "Nền phụ"], ["grid", "Lưới"]]);
@@ -37,11 +95,13 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
   const [prompt, setPrompt] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [video, setVideo] = useState<string | null>(null);
+  const [docs, setDocs] = useState<string[]>([]);
   const [base, setBase] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const imgInput = useRef<HTMLInputElement>(null);
   const vidInput = useRef<HTMLInputElement>(null);
+  const docInput = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const a = useAction();
   const up = useAction();
@@ -54,32 +114,22 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
       setPrompt(data.brief.prompt);
       setImages(data.brief.images);
       setVideo(data.brief.video);
+      setDocs((data.brief.docs ?? []).filter((d) => data.docs.some((x) => x.id === d)));
     }
   }, [data, loaded]);
   const job = data?.job;
   const running = !!job && ["queued", "running"].includes(job.status);
   const rec = data?.project.find((r) => r.id === data.brief?.last) ?? null;
   const vid = data?.videos.find((v) => v.id === video) ?? null;
+  const docRecs = docs.map((d) => data?.docs.find((x) => x.id === d)).filter((d): d is StyleDoc => !!d);
 
   const addFiles = (files: File[]) =>
     up.run(async () => {
-      const next = [...images];
-      for (const f of files) {
-        if (VIDEO_TYPES.includes(f.type) || /\.(mp4|mov|webm)$/i.test(f.name)) {
-          if (f.size > 200 * 1024 * 1024) throw new Error("Video quá lớn (tối đa 200 MB)");
-          const v = await api<StyleVideo>(`/projects/${pid}/style-refs/video`, { method: "POST", body: f, headers: { "x-file-name": encodeURIComponent(f.name), "content-type": f.type || "application/octet-stream" } });
-          setVideo(v.id);
-        } else if (IMG_TYPES.includes(f.type)) {
-          if (next.length >= MAX_IMG) throw new Error(`Tối đa ${MAX_IMG} ảnh tham chiếu – bỏ bớt ảnh rồi thêm`);
-          if (f.size > 10 * 1024 * 1024) throw new Error(`Ảnh "${f.name}" quá lớn (tối đa 10 MB)`);
-          const fd = new FormData();
-          fd.append("file", f);
-          const r = await api<{ id: string }>(`/projects/${pid}/assets`, { method: "POST", body: fd });
-          if (!next.includes(r.id)) next.push(r.id);
-          setImages([...next]);
-        } else throw new Error(`"${f.name}": chỉ nhận ảnh JPG/PNG/WebP hoặc video MP4/MOV/WebM`);
+      try {
+        await uploadStyleFiles(pid, files, { images, video, docs }, (s) => (setImages(s.images), setVideo(s.video), setDocs(s.docs)));
+      } finally {
+        reload();
       }
-      reload();
     });
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
@@ -95,7 +145,7 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
 
   const generate = () =>
     a.run(async () => {
-      const brief = { prompt, images, video, base, mode: ai ? "api" : "claude-code" };
+      const brief = { prompt, images, video, docs, base, mode: ai ? "api" : "claude-code" };
       await api(`/projects/${pid}/style-gen`, { method: "POST", json: brief });
       reload();
       if (!ai) await cc.ask({ pid, kind: "style-gen", note: prompt.trim() || "(theo ảnh tham chiếu)", what: "xem ảnh tham chiếu và tạo một phong cách video mới" });
@@ -111,7 +161,7 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
   return (
     <section className="card mb-4" aria-labelledby="sg-title">
       <h2 id="sg-title" className="text-base font-semibold">Tạo phong cách bằng AI</h2>
-      <p className="mt-0.5 text-[13px] text-soft">Mô tả phong cách bạn muốn, thêm ảnh hoặc một đoạn video mẫu. Claude xem tư liệu, dựng bảng màu, phông và nhịp chuyển động riêng, tự chỉnh màu chữ cho đủ tương phản rồi dựng ảnh xem trước trên chính cảnh của bạn.</p>
+      <p className="mt-0.5 text-[13px] text-soft">Mô tả phong cách bạn muốn, thêm ảnh, một đoạn video mẫu, hoặc tài liệu thương hiệu (ZIP, PDF, trang HTML). Claude xem tư liệu, dựng bảng màu, phông và nhịp chuyển động riêng, tự chỉnh màu chữ cho đủ tương phản rồi dựng ảnh xem trước trên chính cảnh của bạn.</p>
 
       <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div>
@@ -140,12 +190,15 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
             className={`rounded-lg border border-dashed p-3 transition-colors duration-150 ${over ? "border-brand bg-brand-tint" : "border-line bg-paper"}`}
           >
             <p className="text-[13px] text-soft">Kéo thả vào đây, hoặc
-              <button type="button" className="mx-1 font-medium text-brand underline" disabled={up.busy} onClick={() => imgInput.current?.click()}>chọn ảnh</button>(JPG, PNG, WebP, tối đa {MAX_IMG})
-              <button type="button" className="mx-1 font-medium text-brand underline" disabled={up.busy} onClick={() => vidInput.current?.click()}>chọn video</button>(MP4, MOV, WebM ≤ 200 MB).
+              <button type="button" className="mx-1 font-medium text-brand underline" disabled={up.busy} onClick={() => imgInput.current?.click()}>chọn ảnh</button>(JPG, PNG, WebP, tối đa {MAX_IMG}),
+              <button type="button" className="mx-1 font-medium text-brand underline" disabled={up.busy} onClick={() => vidInput.current?.click()}>chọn video</button>(MP4, MOV, WebM ≤ 200 MB),
+              <button type="button" className="mx-1 font-medium text-brand underline" disabled={up.busy} onClick={() => docInput.current?.click()}>chọn tài liệu</button>(ZIP, PDF, HTML ≤ 100 MB, tối đa {MAX_DOCS}: bộ nhận diện, brand guideline, trang web mẫu).
             </p>
+            <input ref={docInput} type="file" multiple accept=".zip,.pdf,.html,.htm" className="sr-only" aria-label="Chọn tài liệu phong cách" onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; addFiles(f); }} />
             <input ref={imgInput} type="file" multiple accept={IMG_TYPES.join(",")} className="sr-only" aria-label="Chọn ảnh tham chiếu" onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; addFiles(f); }} />
             <input ref={vidInput} type="file" accept={VIDEO_TYPES.join(",")} className="sr-only" aria-label="Chọn video tham chiếu" onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; addFiles(f); }} />
-            {up.busy && <p className="mt-2 text-[13px] text-soft" aria-live="polite">Đang tải lên… (video: tải xong còn trích khung hình)</p>}
+            {up.busy && <p className="mt-2 text-[13px] text-soft" aria-live="polite">Đang tải lên… (video: trích khung hình; ZIP/HTML: giải nén và chụp trang)</p>}
+            <StyleDocList docs={docRecs} onRemove={(id) => setDocs(docs.filter((x) => x !== id))} />
             {(images.length > 0 || vid) && (
               <ul className="mt-2 flex flex-wrap gap-2" aria-labelledby="sg-refs">
                 {images.map((id) => (
@@ -174,7 +227,7 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-primary" disabled={a.busy || up.busy || running || (!prompt.trim() && !images.length && !video)} onClick={generate}>
+        <button type="button" className="btn btn-primary" disabled={a.busy || up.busy || running || (!prompt.trim() && !images.length && !video && !docs.length)} onClick={generate}>
           {running ? "Claude đang tạo…" : base ? "Tạo bản chỉnh" : "Tạo phong cách"}
         </button>
         <span className="text-[12px] text-soft">{ai ? "Dùng Claude API (khoảng 1 phút, gồm dựng ảnh xem trước)." : "Claude Code làm trên máy này bằng gói Claude đã đăng ký."}</span>
@@ -291,5 +344,64 @@ function Result({ pid, rec, shot, previewBusy, fonts, themeName, inLibrary, appl
         <Msg msg={a.msg} />
       </details>
     </div>
+  );
+}
+
+/**
+ * Ô "Tài liệu phong cách" ở bước Tải tài liệu: tải bộ nhận diện / brand guideline / trang mẫu (ZIP, PDF, HTML, ảnh, video) –
+ * gộp vào đề bài tạo phong cách (không cần mở bước Phong cách ngay); bước Phong cách bấm "Tạo phong cách" để Claude làm theo.
+ */
+export function StyleRefsCard({ pid }: { pid: string }) {
+  const [data, setData] = useState<CustomThemes | null>(null);
+  const [over, setOver] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const up = useAction();
+  const load = () => api<CustomThemes>(`/projects/${pid}/themes`).then(setData).catch(() => undefined);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pid]);
+  const b = data?.brief;
+  const sel: StyleSel = { images: b?.images ?? [], video: b?.video ?? null, docs: (b?.docs ?? []).filter((d) => data?.docs.some((x) => x.id === d)) };
+  const save = (s: StyleSel) => api(`/projects/${pid}/style-gen`, { method: "POST", json: { prompt: b?.prompt ?? "", ...s, base: b?.base ?? null } });
+  const add = (files: File[]) =>
+    up.run(async () => {
+      try {
+        await save(await uploadStyleFiles(pid, files, sel));
+      } finally {
+        await load();
+      }
+    }, "Đã thêm vào tư liệu phong cách – mở bước Chọn phong cách, bấm Tạo phong cách");
+  const remove = (id: string) =>
+    up.run(async () => {
+      const next = { ...sel, docs: sel.docs.filter((d) => d !== id) };
+      if (b?.prompt || next.images.length || next.video || next.docs.length) await save(next);
+      await api(`/projects/${pid}/style-refs/doc/${id}`, { method: "DELETE" });
+      await load();
+    });
+  const docs = sel.docs.map((d) => data?.docs.find((x) => x.id === d)).filter((d): d is StyleDoc => !!d);
+  const extra = sel.images.length + (sel.video ? 1 : 0);
+  return (
+    <section className="card mb-4" aria-labelledby="sr-title">
+      <h2 id="sr-title" className="font-semibold">Tài liệu phong cách <span className="font-normal text-soft">(tuỳ chọn)</span></h2>
+      <p className="mt-0.5 text-[13px] text-soft">Có bộ nhận diện thương hiệu, brand guideline hay trang web mẫu? Tải lên để Claude đọc màu, phông, cách trình bày và dựng phong cách video giống của bạn.</p>
+      <div
+        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => { e.preventDefault(); setOver(false); add([...e.dataTransfer.files]); }}
+        className={`mt-2 rounded-lg border border-dashed p-3 transition-colors duration-150 ${over ? "border-brand bg-brand-tint" : "border-line bg-paper"}`}
+      >
+        <p className="text-[13px] text-soft">Kéo thả vào đây, hoặc
+          <button type="button" className="mx-1 font-medium text-brand underline" disabled={up.busy} onClick={() => input.current?.click()}>chọn file</button>
+          – ZIP, PDF, HTML (≤ 100 MB), ảnh JPG/PNG/WebP, video MP4/MOV/WebM.
+        </p>
+        <input ref={input} type="file" multiple accept={STYLE_ACCEPT} className="sr-only" aria-label="Chọn tài liệu phong cách" onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; add(f); }} />
+        {up.busy && <p className="mt-2 text-[13px] text-soft" aria-live="polite">Đang tải lên… (ZIP/HTML: giải nén và chụp trang; video: trích khung hình)</p>}
+        <StyleDocList docs={docs} onRemove={up.busy ? undefined : remove} />
+        {extra > 0 && <p className="mt-2 text-[13px] text-soft">Kèm {sel.images.length ? `${sel.images.length} ảnh` : ""}{sel.images.length && sel.video ? " và " : ""}{sel.video ? "1 video mẫu" : ""} – xem ở bước Chọn phong cách.</p>}
+      </div>
+      <Msg msg={up.msg} />
+      {(docs.length > 0 || extra > 0) && <Link className="btn mt-3" href={`/p/${pid}/phong-cach`}>Sang bước Chọn phong cách để tạo</Link>}
+    </section>
   );
 }

@@ -6,6 +6,7 @@ import { useAction, useApi } from "@/lib/hooks";
 import { useProject } from "@/lib/project";
 import { Badge, Msg, PageHead } from "@/components/ui";
 import { DocAnalysis } from "@/components/doc-plan";
+import { StyleRefsCard } from "@/components/style-gen";
 
 const FIELDS: [string, string][] = [["code", "Mã video"], ["title", "Tiêu đề"], ["scene", "Cảnh"], ["start", "Bắt đầu"], ["end", "Kết thúc"], ["visual", "Mô tả hình"], ["onscreen", "Chữ trên màn hình"], ["vo", "Lời thoại"], ["notes", "Ghi chú"]];
 type Sheet = { sheet: string; headers: string[]; auto: Record<string, number>; missing: string[] };
@@ -65,6 +66,7 @@ export default function Nguon() {
           <input type="file" multiple accept=".docx,.xlsx" className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
           <div className="text-base font-medium">Kéo-thả file .docx / .xlsx vào đây, hoặc bấm để chọn</div>
           <div className="mt-1 text-sm text-soft">Kịch bản đầy đủ · dàn ý (outline) · chủ đề + yêu cầu – ứng dụng tự nhận diện</div>
+          <div className="mt-1 text-[13px] text-soft">Tài liệu phong cách (ZIP, PDF, HTML, ảnh) tải ở ô <b className="font-medium text-ink">Tài liệu phong cách</b> bên dưới.</div>
         </label>
         {files.length > 0 && (
           <ul className="mt-3 space-y-1 text-sm">
@@ -115,6 +117,7 @@ export default function Nguon() {
         </div>
       )}
       {results.filter((r) => r.fileId && /\.docx$/i.test(r.name)).map((r) => <DocAnalysis key={r.fileId} pid={project!.id} fileId={r.fileId} ai={!!meta.data?.ai} />)}
+      <StyleRefsCard pid={project!.id} />
       <div className="card">
         <h2 className="mb-2 font-semibold">Tài liệu đã tải</h2>
         <table className="tbl">

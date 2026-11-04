@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead, SaveBanner } from "@/components/ui";
+import { LocationChips } from "@/components/locations";
 
 type Res = { dir: string; files: string[]; skipped: { key: string; reason: string }[]; catalog: string };
 const safeName = (s: string) => s.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/, "").trim().slice(0, 120) || "Du_an";
@@ -14,6 +15,12 @@ export default function Xuat() {
   const vids = useApi<VideoSum[]>(`/projects/${pid}/videos`);
   const [res, setRes] = useState<Res | null>(null);
   const [dest, setDest] = useState(project!.settings.exportDir ?? "");
+  const defaults = useApi<{ videoDir: string | null }>("/storage/locations");
+  // dự án chưa chọn nơi riêng → điền sẵn nơi lưu mặc định (Cài đặt)
+  useEffect(() => {
+    if (!project!.settings.exportDir && defaults.data?.videoDir) setDest((d) => d || defaults.data!.videoDir!);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaults.data]);
   const [typing, setTyping] = useState(false);
   const [extras, setExtras] = useState(false);
   const a = useAction();
@@ -41,7 +48,7 @@ export default function Xuat() {
   }, []);
   const doExport = () =>
     a.run(async () => {
-      setRes(await api<Res>(`/projects/${pid}/export`, { method: "POST", json: { dest: dest.trim() || undefined, extras } }));
+      setRes(await api<Res>(`/projects/${pid}/export`, { method: "POST", json: { dest: dest.trim() || null, extras } }));
       reload();
     }, "Đã xuất");
   const open = (path: string) => a.run(() => api("/open-folder", { method: "POST", json: { path, projectId: pid } }));
@@ -58,13 +65,14 @@ export default function Xuat() {
       <Msg msg={a.msg} />
       <div className="card mb-4">
         <h2 className="mb-1 font-semibold">Nơi lưu dự án</h2>
-        <p className="text-[13px] text-soft">Hộp chọn thư mục mở trên <b className="font-medium text-ink">máy tính đang chạy ứng dụng</b>. Để trống thì lưu trong thư mục của ứng dụng.</p>
+        <p className="text-[13px] text-soft">Hộp chọn thư mục mở trên <b className="font-medium text-ink">máy tính đang chạy ứng dụng</b>. Lưu được sang ổ khác, ổ ngoài, ổ mạng đã map hoặc thư mục OneDrive / Google Drive. Để trống thì lưu trong thư mục của ứng dụng; nơi mặc định cho mọi dự án đặt ở <a className="text-brand underline" href="/cai-dat">Cài đặt</a>.</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button className="btn" disabled={pick.busy} onClick={choose}>{pick.busy ? "Đang chờ bạn chọn thư mục…" : "Chọn thư mục…"}</button>
           {!typing && <button className="btn" onClick={() => { setTyping(true); setTimeout(() => input.current?.focus(), 0); }}>Gõ đường dẫn</button>}
           {dest && <button className="btn" onClick={() => setDest("")}>Dùng thư mục của ứng dụng</button>}
         </div>
         {pick.msg && !pick.msg.ok && <Msg msg={pick.msg} />}
+        <LocationChips sub="Video khoá học" onPick={(p) => { setDest(p); setTyping(true); }} />
         {typing && (
           <div className="mt-3">
             <label className="label" htmlFor="export-dir">Đường dẫn thư mục (đầy đủ)</label>

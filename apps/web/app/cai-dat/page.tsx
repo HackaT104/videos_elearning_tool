@@ -5,6 +5,7 @@ import { useAction, useApi } from "@/lib/hooks";
 import { Badge, ErrorBox, Msg, PageHead, Progress } from "@/components/ui";
 import { useIsLocal, type UpdateStatus } from "@/components/app-menu";
 import { StockKey } from "@/components/stock-key";
+import { DataLocation, DefaultVideoDir } from "@/components/locations";
 
 const TOKEN_DOCS = "https://docs.github.com/vi/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token";
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString("vi-VN") : "chưa");
@@ -92,6 +93,8 @@ export default function SettingsPage() {
           <a className="mt-2 inline-block text-brand underline" href={TOKEN_DOCS} target="_blank" rel="noreferrer">Hướng dẫn của GitHub</a>
         </details>
       </section>
+      <DefaultVideoDir />
+      <DataLocation local={local} />
       <StockKey />
     </div>
   );

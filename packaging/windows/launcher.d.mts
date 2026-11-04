@@ -9,3 +9,5 @@ export function startUrl(p: AppPaths, webPort: string): string;
 export function edgeCandidates(env?: Env): string[];
 export function edgeArgs(url: string, p: AppPaths): string[];
 export function ensureLinks(appDir?: string, log?: (s: string) => void): { made: number; failed: number };
+export function treeStats(d: string): { files: number; bytes: number };
+export function applyStorageMove(p: AppPaths, log?: (s: string) => void, status?: (s: string) => void): Promise<string | null>;
