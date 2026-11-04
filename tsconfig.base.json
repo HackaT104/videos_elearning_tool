@@ -3,7 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -11,6 +15,19 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "noEmit": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@cvs/core/overlay": [
+        "./packages/core/src/overlay.ts"
+      ],
+      "@cvs/engine/browser": [
+        "./packages/engine/src/browser.ts"
+      ],
+      "@cvs/*": [
+        "./packages/*/src/index.ts"
+      ]
+    }
   }
 }
