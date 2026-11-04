@@ -4,8 +4,10 @@
 
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { getClaudeRequest, listClaudeRequests, REPO_ROOT, STORAGE, updateClaudeRequest } from "@cvs/db";
 
 export const CC_RUN_PROMPT = "Xử lý các yêu cầu đang chờ của Course Video Studio (dùng skill cvs-claude-code). Ghi file tạm chỉ vào thư mục storage/claude-code-tmp/.";
@@ -16,6 +18,26 @@ const LOG_KEEP = 30;
 type Env = Record<string, string | undefined>;
 
 // ---------- tìm Claude Code ----------
+
+/**
+ * Lệnh `pnpm` riêng cho Claude Code: chạy `scripts/cvs.ts` bằng chính Node của ứng dụng (+ tsx), đặt lên đầu PATH.
+ * Bản cài Windows không kèm pnpm, còn pnpm của máy có thể hỏng/khác phiên bản → không dựa vào nó.
+ */
+export function writeCvsShim(dir = join(STORAGE, "claude-code-bin"), node = process.execPath, root = REPO_ROOT): string {
+  const tsx = pathToFileURL(createRequire(join(root, "package.json")).resolve("tsx")).href;
+  const cvs = join(root, "scripts", "cvs.ts");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "pnpm.cmd"), `@echo off\r\n"${node}" --import "${tsx}" "${cvs}" %*\r\n`);
+  const fwd = (p: string) => p.replace(/\\/g, "/");
+  writeFileSync(join(dir, "pnpm"), `#!/bin/sh\nexec "${fwd(node)}" --import "${tsx}" "${fwd(cvs)}" "$@"\n`, { mode: 0o755 });
+  return dir;
+}
+
+/** PATH với thư mục lệnh `pnpm` riêng đứng đầu (giữ đúng tên khoá Path/PATH trên Windows). */
+export function withShimPath(env: Env, dir: string): Env {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
+  return { ...env, [key]: [dir, env[key]].filter(Boolean).join(delimiter) };
+}
 
 const isFile = (p: string) => {
   try {
@@ -289,7 +311,7 @@ export function startClaudeRun(o: { timeoutMs?: number } = {}): RunStart {
 
   let child: ChildProcess;
   try {
-    child = spawnClaude(bin, claudeRunArgs(), { cwd: REPO_ROOT, stdio: ["pipe", "pipe", "pipe"], env: process.env });
+    child = spawnClaude(bin, claudeRunArgs(), { cwd: REPO_ROOT, stdio: ["pipe", "pipe", "pipe"], env: withShimPath(process.env, writeCvsShim()) });
   } catch (e) {
     const why = `Không chạy được Claude Code: ${(e as Error).message}`;
     finish(1, why);

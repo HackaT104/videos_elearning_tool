@@ -299,5 +299,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     readFile: (p) => readFileSync(p === "-" ? 0 : p, "utf8"),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   };
-  process.exitCode = await main(process.argv.slice(2), io);
+  // gọi qua lệnh `pnpm` riêng của ứng dụng (claude-code-runner) → bỏ "-s"/"cvs" đứng đầu
+  const args = process.argv.slice(2);
+  while (args[0] === "-s" || args[0] === "cvs") args.shift();
+  process.exitCode = await main(args, io);
 }

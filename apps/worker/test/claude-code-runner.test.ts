@@ -286,3 +286,18 @@ describe("xuất ra thư mục chọn", () => {
     expect((await open(dir)).status).toBe(404); // đã xoá → không mở
   });
 });
+
+describe("lệnh pnpm riêng cho Claude Code (bản cài không có pnpm)", () => {
+  it.skipIf(process.platform === "win32")("`pnpm -s cvs …` chạy scripts/cvs.ts bằng Node của ứng dụng, bỏ -s/cvs", () => {
+    const dir = studio.writeCvsShim(join(storage, "shim-bin"));
+    expect(readFileSync(join(dir, "pnpm.cmd"), "utf8")).toMatch(/^@echo off\r\n".+" --import "file:.+" ".+cvs\.ts" %\*\r\n$/);
+    const env = studio.withShimPath({ ...process.env, CVS_API: "http://127.0.0.1:1/api" }, dir);
+    let err = "";
+    try {
+      execFileSync("sh", ["-c", "pnpm -s cvs projects"], { env: env as NodeJS.ProcessEnv, stdio: "pipe" });
+    } catch (e) {
+      err = String((e as { stderr: Buffer }).stderr);
+    }
+    expect(err).toContain("Không kết nối được worker");
+  });
+});
