@@ -1,6 +1,7 @@
 // Khởi động giao diện. CVS_LAN=1 → mở cho điện thoại/máy khác cùng Wi-Fi (bắt buộc có CVS_ACCESS_PIN).
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +18,8 @@ if (lan) {
   console.log(`\nMở trên điện thoại (cùng Wi-Fi): ${ips.map((ip) => `http://${ip}:${port}`).join("  ")}`);
   console.log(process.env.CVS_ACCESS_PIN ? "Cần nhập mã PIN (CVS_ACCESS_PIN trong .env).\n" : "CHÚ Ý: chưa đặt CVS_ACCESS_PIN trong .env – điện thoại sẽ bị chặn cho tới khi đặt PIN.\n");
 }
-const next = join(here, "node_modules", "next", "dist", "bin", "next");
+// tìm next qua Node (chạy được cả khi thư viện cài kiểu pnpm lồng nhau lẫn kiểu phẳng của bộ cài)
+const next = join(dirname(createRequire(join(here, "package.json")).resolve("next/package.json")), "dist", "bin", "next");
 // Chế độ LAN: Next chỉ nghe 127.0.0.1 ở cổng trong; một proxy nhỏ nghe 0.0.0.0 và ghi địa chỉ thật của máy gửi vào
 // x-cvs-remote / x-forwarded-for (ghi đè, máy khác không giả được) → middleware biết đâu là máy này, đâu là điện thoại.
 const inner = lan ? String(Number(port) + 100) : port;
