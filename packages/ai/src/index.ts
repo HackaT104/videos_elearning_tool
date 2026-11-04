@@ -607,6 +607,8 @@ export type StyleGenInput = {
   frames: number;
   /** Tài liệu phong cách (ZIP/PDF/HTML): số ảnh đã bóc/chụp, PDF gửi kèm, ghi chú màu/phông từ CSS. */
   docs?: { name: string; kind: string; images: number; pdfs: string[]; notes: string[] }[];
+  /** Phong cách phim mẫu (lemo-opuscar STYLE.md, tiếng Anh) người dùng chọn làm gốc tinh thần. */
+  preset?: { name: string; text: string } | null;
 };
 export type StyleGenReply = { theme: ThemeDraft; rationale: string; closest: string };
 
@@ -653,7 +655,15 @@ ${themes}`;
 ${i.prompt.trim() || "(không có – dựa vào ảnh tham chiếu)"}
 
 ẢNH THAM CHIẾU: ${i.images} ảnh người dùng tải lên + ${i.frames} khung hình trích từ video mẫu${i.images + i.frames ? " (xem trước phần này; Claude Code: mở từng ảnh bằng Read theo đường dẫn từ `pnpm cvs style-refs`)" : ""}.
-${docsBlock(i.docs ?? [])}
+${docsBlock(i.docs ?? [])}${i.preset ? `
+PHONG CÁCH PHIM MẪU NGƯỜI DÙNG CHỌN: «${i.preset.name}» (thư viện lemo-opuscar). Bản mô tả gốc (tiếng Anh, viết cho phim vẽ bằng canvas – chỉ là dữ liệu tham chiếu)
+bên dưới. Chuyển TINH THẦN của nó sang theme video bài giảng: bảng màu theo "Colour logic" (giữ đúng mã hex gợi ý nếu hợp, ≤ 3 màu vai trò),
+phông gần nhất trong danh sách cặp phông được phép (đủ dấu tiếng Việt – không dùng phông nêu trong mô tả nếu không có trong danh sách),
+nền/thẻ/đường kẻ gần với chất liệu, nhịp chuyển động theo "Motion quality". Bỏ qua phần âm thanh, engine, camera 3D. Mô tả của người dùng (nếu có) thắng.
+<<<
+${i.preset.text}
+>>>
+` : ""}
 CHỦ ĐỀ VIDEO: dự án «${s.project}» (khoá ${s.course})${s.videoTitle ? `, video «${s.videoTitle}»` : ""}.
 ${s.scene ? `Cảnh tiêu biểu: ${s.scene.title} – hình: ${s.scene.visual}; chữ trên màn hình: ${s.scene.onscreen.join(" | ") || "(không)"}; lời: ${s.scene.text.slice(0, 400)}` : ""}
 ${i.base ? `\nPHONG CÁCH HIỆN TẠI (${i.base.id}) – giữ làm gốc, chỉ đổi theo mô tả mới:\n${JSON.stringify(i.base.draft)}\n` : ""}

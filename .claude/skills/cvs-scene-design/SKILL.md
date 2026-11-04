@@ -21,6 +21,7 @@ SceneSpec → GSAP `fromTo` (HyperFrames) và `interpolate` (Remotion) phải ra
 | Chọn bố cục, màu, cỡ chữ, tiếng Việt | `references/look.md` |
 | Dựng mạch bài giảng, chọn template cho từng câu | `references/explainer.md` |
 | Số liệu, biểu đồ, bộ đếm | `references/data.md` |
+| Cần ý tưởng phong cách / ngữ pháp hình (bảng trắng, phấn, bản vẽ, isometric, dataviz…) | `references/film-styles.md` → `packages/themes/film-styles/<slug>.md` |
 
 ## Quy trình 6 bước cho một cảnh
 

@@ -95,7 +95,7 @@ export function createServer(opts: ServerOpts = {}) {
       const r = await api.get(`/projects/${enc(projectId)}/style-refs`);
       const list = [...(r.images ?? []).map((x: any) => ({ file: x.file, label: `Ảnh tham chiếu: ${x.name ?? ""}` })), ...(r.video?.frames ?? []).map((f: any) => ({ file: f.file, label: `Khung video mẫu ${r.video?.name ?? ""} t = ${f.t} s` })), ...(r.docs ?? []).flatMap((d: any) => d.images)];
       const docs = (r.docs ?? []).map((d: any) => ({ name: d.name, kind: d.kind, pdfs: d.pdfs.map((f: any) => f.name), notes: d.notes }));
-      return { content: [text({ prompt: r.prompt, base: r.base, video: r.video?.name ?? null, images: list.length, docs }), ...(await images(api, list))] };
+      return { content: [text({ prompt: r.prompt, base: r.base, preset: r.preset ?? null, video: r.video?.name ?? null, images: list.length, docs }), ...(await images(api, list))] };
     })());
 
   // ---------- ghi ----------

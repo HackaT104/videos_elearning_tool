@@ -10,7 +10,7 @@ import { generateStyle, styleGenErrors, styleGenPrompt, type Prompt, type StyleG
 import { getProject, getVideo, listVideos, paths, STORAGE } from "@cvs/db";
 import { parseAssetId } from "@cvs/engine";
 import {
-  buildCustomTheme, forgetCustomTheme, getTheme, isCustomThemeId, makeCustomThemeId, registerCustomTheme, setCustomThemeResolver, THEME_IDS, themeToDraft,
+  buildCustomTheme, filmStyleBrief, forgetCustomTheme, getFilmStyle, getTheme, isCustomThemeId, makeCustomThemeId, registerCustomTheme, setCustomThemeResolver, THEME_IDS, themeToDraft,
   type CustomThemeId, type Theme, type ThemeAdjustment, type ThemeDraft,
 } from "@cvs/themes";
 import { ffmpeg, probe, run, FFMPEG } from "@cvs/tts";
@@ -142,7 +142,7 @@ export function deleteCustomTheme(pid: string, id: string, from: "project" | "li
 
 // ---------- tư liệu tham chiếu ----------
 
-export type StyleBrief = { prompt: string; images: string[]; video: string | null; docs?: string[]; base: string | null; at: string; last?: string };
+export type StyleBrief = { prompt: string; images: string[]; video: string | null; docs?: string[]; preset?: string | null; base: string | null; at: string; last?: string };
 export const MAX_REF_IMAGES = 6;
 export const MAX_REF_VIDEO_BYTES = 200 * 1024 * 1024;
 const VIDEO_EXT = [".mp4", ".mov", ".webm"];
@@ -163,7 +163,7 @@ function saveBrief(pid: string, b: StyleBrief) {
 }
 
 /** Kiểm + lưu đề bài: mô tả ≤ 2000 ký tự, ≤ 6 ảnh jpg/png/webp của dự án, video mẫu đã tải, phong cách gốc (tuỳ chọn). */
-export function setStyleBrief(pid: string, input: { prompt?: unknown; images?: unknown; video?: unknown; docs?: unknown; base?: unknown }): StyleBrief {
+export function setStyleBrief(pid: string, input: { prompt?: unknown; images?: unknown; video?: unknown; docs?: unknown; preset?: unknown; base?: unknown }): StyleBrief {
   const prompt = typeof input.prompt === "string" ? input.prompt.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").trim() : "";
   if (prompt.length > 2000) throw new Error("Mô tả dài quá 2000 ký tự");
   const images = Array.isArray(input.images) ? [...new Set(input.images.map(String))] : [];
@@ -180,10 +180,12 @@ export function setStyleBrief(pid: string, input: { prompt?: unknown; images?: u
   for (const d of docs) if (!styleDoc(pid, d)) throw new Error("Không có tài liệu phong cách này – tải lại tài liệu");
   const pdfBytes = docs.flatMap((d) => styleDoc(pid, d)!.pdfs).reduce((n, f) => n + f.size, 0);
   if (pdfBytes > 25 * 1024 * 1024) throw new Error("Tổng PDF quá lớn để gửi cho Claude (tối đa 25 MB) – bỏ bớt tài liệu");
+  const preset = input.preset ? String(input.preset) : null;
+  if (preset && !getFilmStyle(preset)) throw new Error("Không có phong cách phim mẫu này");
   const base = input.base ? String(input.base) : null;
   if (base && !getProjectTheme(pid, base) && !THEME_IDS.includes(base as never)) throw new Error("Phong cách gốc không có");
-  if (!prompt && !images.length && !video && !docs.length) throw new Error("Cần mô tả phong cách hoặc ít nhất một ảnh / video / tài liệu tham chiếu");
-  const b: StyleBrief = { prompt, images, video, docs, base, at: new Date().toISOString(), last: loadBrief(pid)?.last };
+  if (!prompt && !images.length && !video && !docs.length && !preset) throw new Error("Cần mô tả phong cách, một phong cách phim mẫu, hoặc ít nhất một ảnh / video / tài liệu tham chiếu");
+  const b: StyleBrief = { prompt, images, video, docs, preset, base, at: new Date().toISOString(), last: loadBrief(pid)?.last };
   saveBrief(pid, b);
   return b;
 }
@@ -302,6 +304,7 @@ async function refImage(pid: string, id: string): Promise<string> {
 export type StyleRefs = {
   prompt: string; base: string | null; images: { id: string; name: string; file: string }[]; video: { id: string; name: string; frames: { file: string; t: number }[] } | null;
   docs: Pick<StyleDoc, "id" | "name" | "kind" | "images" | "pdfs" | "notes">[];
+  preset: { slug: string; name: string } | null;
 };
 
 export async function styleRefs(pid: string): Promise<StyleRefs> {
@@ -311,7 +314,8 @@ export async function styleRefs(pid: string): Promise<StyleRefs> {
   for (const id of b.images) if (assetFile(pid, id)) images.push({ id, name: readName(pid, id), file: await refImage(pid, id) });
   const v = b.video ? styleVideo(pid, b.video) : null;
   const docs = (b.docs ?? []).map((d) => styleDoc(pid, d)).filter((d): d is StyleDoc => !!d).map(({ id, name, kind, images, pdfs, notes }) => ({ id, name, kind, images, pdfs, notes }));
-  return { prompt: b.prompt, base: b.base, images, video: v ? { id: v.id, name: v.name, frames: v.frames } : null, docs };
+  const fs = b.preset ? getFilmStyle(b.preset) : null;
+  return { prompt: b.prompt, base: b.base, images, video: v ? { id: v.id, name: v.name, frames: v.frames } : null, docs, preset: fs ? { slug: fs.slug, name: fs.en } : null };
 }
 const readName = (pid: string, id: string) => {
   try {
@@ -346,6 +350,7 @@ function styleInput(pid: string, refs: StyleRefs): StyleGenInput {
     base,
     images: refs.images.length,
     frames: refs.video?.frames.length ?? 0,
+    preset: refs.preset ? { name: refs.preset.name, text: filmStyleBrief(refs.preset.slug) ?? "" } : null,
     docs: refs.docs.map((d) => ({ name: d.name, kind: d.kind, images: d.images.length, pdfs: d.pdfs.map((f) => f.name), notes: d.notes })),
   };
 }

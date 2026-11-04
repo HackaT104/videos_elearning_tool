@@ -175,7 +175,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       case "style-refs": {
         need(a, 1, "style-refs <pid>");
         const r = await api.get(`/projects/${enc(a[0])}/style-refs`);
-        json(io, { prompt: r.prompt, base: r.base, images: r.images.map((x: any) => ({ path: x.file, name: x.name })), videoFrames: r.video ? r.video.frames.map((f: any) => ({ path: f.file, t: f.t })) : [], video: r.video?.name ?? null, docs: (r.docs ?? []).map((d: any) => ({ name: d.name, kind: d.kind, images: d.images.map((x: any) => ({ path: x.file, label: x.label })), pdfs: d.pdfs.map((f: any) => ({ path: f.file, name: f.name })), notes: d.notes })), next: `pnpm -s cvs prompt style-gen ${a[0]}` });
+        json(io, { prompt: r.prompt, base: r.base, images: r.images.map((x: any) => ({ path: x.file, name: x.name })), videoFrames: r.video ? r.video.frames.map((f: any) => ({ path: f.file, t: f.t })) : [], video: r.video?.name ?? null, docs: (r.docs ?? []).map((d: any) => ({ name: d.name, kind: d.kind, images: d.images.map((x: any) => ({ path: x.file, label: x.label })), pdfs: d.pdfs.map((f: any) => ({ path: f.file, name: f.name })), notes: d.notes })), preset: r.preset ?? null, next: `pnpm -s cvs prompt style-gen ${a[0]}` });
         return 0;
       }
       case "set-theme": {

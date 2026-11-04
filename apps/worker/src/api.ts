@@ -32,7 +32,7 @@ import {
   CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, ensureZerottsRunning, installCit, installZerotts, restartCit, restartZerotts,
   ZEROTTS_REPO, ZEROTTS_VOICES, ZerottsClient, zerottsManagerState,
 } from "@cvs/tts";
-import { DEFAULT_FONT_PAIR, FONT_PAIRS, fontFaceUrlCss, fontFilePath, isCustomThemeId, THEMES, THEME_IDS } from "@cvs/themes";
+import { DEFAULT_FONT_PAIR, FONT_PAIRS, fontFaceUrlCss, filmStylePoster, fontFilePath, isCustomThemeId, listFilmStyles, THEMES, THEME_IDS } from "@cvs/themes";
 import { TEMPLATES, ICON_NAMES, KINETIC_PRESETS } from "@cvs/engine";
 import { aiAvailable, aiBlockedReason, setApiAllowed } from "@cvs/ai";
 import { isLocalRequest, quitApp } from "./desktop";
@@ -398,6 +398,13 @@ app.post("/projects/:id/style-refs/doc", async (c) => {
     if (e instanceof StyleDocError) return c.json({ error: e.message }, 400);
     throw e;
   }
+});
+// Phong cách phim mẫu (lemo-opuscar): danh sách + poster thu nhỏ
+app.get("/film-styles", (c) => c.json(listFilmStyles().map((s) => ({ ...s, poster: `/api/film-styles/${s.slug}/poster` }))));
+app.get("/film-styles/:slug/poster", (c) => {
+  const f = filmStylePoster(c.req.param("slug"));
+  if (!f) return c.json({ error: "Không có ảnh" }, 404);
+  return c.body(readFileSync(f), 200, { "content-type": "image/jpeg", "cache-control": "public, max-age=86400" });
 });
 app.delete("/projects/:id/style-refs/doc/:did", (c) => (deleteStyleDoc(c.req.param("id"), c.req.param("did")) ? c.json({ ok: true }) : c.json({ error: "Không có tài liệu" }, 404)));
 app.delete("/projects/:id/style-refs/video/:vid", (c) => (deleteStyleVideo(c.req.param("id"), c.req.param("vid")) ? c.json({ ok: true }) : c.json({ error: "Không có video" }, 404)));

@@ -130,3 +130,23 @@ describe("tải tài liệu phong cách", () => {
     expect(call.images.length).toBeGreaterThanOrEqual(2);
   }, 60_000);
 });
+
+describe("phong cách phim mẫu (lemo-opuscar)", () => {
+  it("danh sách 66 + poster; đề bài chỉ có phong cách mẫu → prompt có STYLE.md đã trích (bỏ âm thanh/engine)", async () => {
+    const list = await (await req("/film-styles")).json();
+    expect(list).toHaveLength(66);
+    const wb = list.find((x: any) => x.slug === "whiteboard");
+    expect(wb.uses).toContain("Online courses");
+    const img = await req(`/film-styles/whiteboard/poster`);
+    expect(img.headers.get("content-type")).toBe("image/jpeg");
+    expect((await req(`/film-styles/..%2F..%2Fpackage/poster`)).status).toBe(404);
+    expect((await req(`/projects/${pid}/style-gen`, { method: "POST", json: { preset: "khong-co" } })).status).toBe(400);
+    expect((await req(`/projects/${pid}/style-gen`, { method: "POST", json: { preset: "whiteboard" } })).status).toBe(200);
+    expect(JSON.parse((await run("style-refs", pid)).out).preset).toEqual({ slug: "whiteboard", name: "Whiteboard Explainer" });
+    const p = (await run("prompt", "style-gen", pid)).out;
+    expect(p).toContain("PHONG CÁCH PHIM MẪU NGƯỜI DÙNG CHỌN: «Whiteboard Explainer»");
+    expect(p).toContain("## 3. Colour logic");
+    expect(p).not.toContain("## 7. Sound palette");
+    expect(p).not.toContain("## 10. Engine");
+  });
+});

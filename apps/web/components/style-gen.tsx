@@ -16,7 +16,7 @@ export type CustomRec = {
 type StyleVideo = { id: string; name: string; duration: number; frames: { file: string; t: number }[] };
 export type StyleDoc = { id: string; name: string; kind: "zip" | "pdf" | "html"; size: number; images: { file: string; label: string }[]; pdfs: { name: string }[]; notes: string[] };
 type Job = { id: number; status: string; progress: number; message: string | null; error: string | null };
-export type CustomThemes = { project: CustomRec[]; library: CustomRec[]; libraryIds: string[]; brief: { prompt: string; images: string[]; video: string | null; docs?: string[]; base: string | null; last?: string } | null; videos: StyleVideo[]; docs: StyleDoc[]; job: Job | null };
+export type CustomThemes = { project: CustomRec[]; library: CustomRec[]; libraryIds: string[]; brief: { prompt: string; images: string[]; video: string | null; docs?: string[]; preset?: string | null; base: string | null; last?: string } | null; videos: StyleVideo[]; docs: StyleDoc[]; job: Job | null };
 
 const EXAMPLES = [
   "Tối giản sang trọng: nền than chì, chữ trắng ngà, một màu vàng đồng để nhấn",
@@ -59,6 +59,49 @@ export async function uploadStyleFiles(pid: string, files: File[], cur: StyleSel
   return next;
 }
 
+type FilmStyle = { slug: string; en: string; category_en: string; uses: string[]; film: string; line: string; poster: string };
+const EDU = /course|lesson|explainer|tutorial|onboarding|how-to|training|education/i;
+
+/** 66 phong cách phim mẫu (lemo-opuscar): chọn một làm gốc tinh thần – hợp bài giảng xếp trước. */
+function FilmStylePicker({ value, onChange }: { value: string | null; onChange: (slug: string | null) => void }) {
+  const [list, setList] = useState<FilmStyle[] | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if ((open || value) && !list) api<FilmStyle[]>("/film-styles").then((l) => setList([...l].sort((a, b) => Number(b.uses.some((u) => EDU.test(u))) - Number(a.uses.some((u) => EDU.test(u)))))).catch(() => setList([]));
+  }, [open, value, list]);
+  const cur = list?.find((x) => x.slug === value);
+  return (
+    <div className="mt-3">
+      {value && (
+        <p className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
+          <Badge tone="blue">Phong cách phim mẫu: {cur?.en ?? value}</Badge>
+          <button type="button" className="min-h-8 px-1 text-[12px] text-soft underline" onClick={() => onChange(null)}>Bỏ</button>
+        </p>
+      )}
+      <details open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+        <summary className="cursor-pointer text-[13px] font-medium text-soft">Lấy cảm hứng từ 66 phong cách phim mẫu (bảng trắng, phấn, bản vẽ, dataviz, isometric…)</summary>
+        {!list ? <p className="mt-2 text-[13px] text-soft">Đang tải…</p> : (
+          <ul className="mt-2 grid max-h-[440px] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6" aria-label="Phong cách phim mẫu">
+            {list.map((x) => (
+              <li key={x.slug}>
+                <button type="button" aria-pressed={x.slug === value} onClick={() => onChange(x.slug === value ? null : x.slug)} title={x.line}
+                  className={`w-full overflow-hidden rounded-md bg-white text-left transition-shadow duration-150 ${x.slug === value ? "shadow-[0_0_0_2px_var(--color-brand)]" : "shadow-[0_0_0_1px_rgb(19_34_43/0.1)] hover:shadow-[0_0_0_1px_rgb(19_34_43/0.3)]"}`}>
+                  <img src={x.poster} alt="" loading="lazy" className="aspect-video w-full object-cover" />
+                  <span className="block px-2 py-1">
+                    <span className="block truncate text-[12px] font-medium">{x.en}</span>
+                    <span className="block truncate text-[11px] text-soft">{x.uses.join(" · ")}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-1 text-[11px] text-soft">Mô tả phong cách và ảnh: lemo-opuscar © LemoLab (MIT; ảnh CC BY 4.0, đã thu nhỏ). Claude chuyển tinh thần phim sang màu, phông có dấu tiếng Việt và nhịp chuyển động của video bài giảng.</p>
+      </details>
+    </div>
+  );
+}
+
 /** Danh sách tài liệu phong cách đã chọn (tên, số ảnh/PDF, ghi chú màu/phông) + nút bỏ. */
 export function StyleDocList({ docs, onRemove }: { docs: StyleDoc[]; onRemove?: (id: string) => void }) {
   if (!docs.length) return null;
@@ -96,6 +139,7 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
   const [images, setImages] = useState<string[]>([]);
   const [video, setVideo] = useState<string | null>(null);
   const [docs, setDocs] = useState<string[]>([]);
+  const [preset, setPreset] = useState<string | null>(null);
   const [base, setBase] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -115,6 +159,7 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
       setImages(data.brief.images);
       setVideo(data.brief.video);
       setDocs((data.brief.docs ?? []).filter((d) => data.docs.some((x) => x.id === d)));
+      setPreset(data.brief.preset ?? null);
     }
   }, [data, loaded]);
   const job = data?.job;
@@ -145,10 +190,10 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
 
   const generate = () =>
     a.run(async () => {
-      const brief = { prompt, images, video, docs, base, mode: ai ? "api" : "claude-code" };
+      const brief = { prompt, images, video, docs, preset, base, mode: ai ? "api" : "claude-code" };
       await api(`/projects/${pid}/style-gen`, { method: "POST", json: brief });
       reload();
-      if (!ai) await cc.ask({ pid, kind: "style-gen", note: prompt.trim() || "(theo ảnh tham chiếu)", what: "xem ảnh tham chiếu và tạo một phong cách video mới" });
+      if (!ai) await cc.ask({ pid, kind: "style-gen", note: prompt.trim() || (preset ? `(theo phong cách phim mẫu ${preset})` : "(theo tư liệu tham chiếu)"), what: "xem ảnh tham chiếu và tạo một phong cách video mới" });
     });
   const iterate = (id: string) => {
     setBase(id);
@@ -226,8 +271,9 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
         </div>
       </div>
 
+      <FilmStylePicker value={preset} onChange={setPreset} />
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-primary" disabled={a.busy || up.busy || running || (!prompt.trim() && !images.length && !video && !docs.length)} onClick={generate}>
+        <button type="button" className="btn btn-primary" disabled={a.busy || up.busy || running || (!prompt.trim() && !images.length && !video && !docs.length && !preset)} onClick={generate}>
           {running ? "Claude đang tạo…" : base ? "Tạo bản chỉnh" : "Tạo phong cách"}
         </button>
         <span className="text-[12px] text-soft">{ai ? "Dùng Claude API (khoảng 1 phút, gồm dựng ảnh xem trước)." : "Claude Code làm trên máy này bằng gói Claude đã đăng ký."}</span>
@@ -363,7 +409,7 @@ export function StyleRefsCard({ pid }: { pid: string }) {
   }, [pid]);
   const b = data?.brief;
   const sel: StyleSel = { images: b?.images ?? [], video: b?.video ?? null, docs: (b?.docs ?? []).filter((d) => data?.docs.some((x) => x.id === d)) };
-  const save = (s: StyleSel) => api(`/projects/${pid}/style-gen`, { method: "POST", json: { prompt: b?.prompt ?? "", ...s, base: b?.base ?? null } });
+  const save = (s: StyleSel) => api(`/projects/${pid}/style-gen`, { method: "POST", json: { prompt: b?.prompt ?? "", ...s, preset: b?.preset ?? null, base: b?.base ?? null } });
   const add = (files: File[]) =>
     up.run(async () => {
       try {
@@ -375,7 +421,7 @@ export function StyleRefsCard({ pid }: { pid: string }) {
   const remove = (id: string) =>
     up.run(async () => {
       const next = { ...sel, docs: sel.docs.filter((d) => d !== id) };
-      if (b?.prompt || next.images.length || next.video || next.docs.length) await save(next);
+      if (b?.prompt || b?.preset || next.images.length || next.video || next.docs.length) await save(next);
       await api(`/projects/${pid}/style-refs/doc/${id}`, { method: "DELETE" });
       await load();
     });
