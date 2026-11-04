@@ -199,6 +199,8 @@ export function groundHtml(theme: Theme): string {
     case "blocks":
       // mảng màu cắt cạnh sắc ở mép (ngoài vùng an toàn): cột san hô bên phải, thanh mực ở đáy
       return `<div id="ground" data-layout-ignore style="${base}background:${c.bg};overflow:hidden;"><div style="position:absolute;right:0;top:0;width:64px;height:1080px;background:${c.highlight};"></div><div style="position:absolute;left:0;bottom:0;width:1856px;height:16px;background:${c.ink};"></div><div style="position:absolute;right:64px;top:0;width:24px;height:200px;background:${c.ink};"></div></div>`;
+    case "custom":
+      return customGroundHtml(theme);
     case "atlas": {
       // lưới kẻ mảnh + vòng la bàn ở góc dưới phải (tâm ngoài khung → chỉ thấy một phần tư)
       const ticks = Array.from({ length: 72 }, (_, i) => {
@@ -210,4 +212,21 @@ export function groundHtml(theme: Theme): string {
       return `<div id="ground" data-layout-ignore style="${base}background-color:${c.bg};background-image:linear-gradient(${c.grid} 1px,transparent 1px),linear-gradient(90deg,${c.grid} 1px,transparent 1px);background-size:96px 96px;background-position:0 -42px;"><svg width="1920" height="1080" style="position:absolute;inset:0;opacity:.55"><g transform="translate(1880 1040)" fill="none" stroke="${c.inkSoft}" stroke-width="1.2"><circle r="336"/><circle r="300"/><circle r="214" stroke-dasharray="2 7"/><path d="${ticks}"/><path d="M0 -420 V420 M-420 0 H420" stroke-width="1"/></g></svg><div style="position:absolute;left:96px;right:96px;top:28px;height:0;border-top:1px solid ${c.inkSoft};opacity:.45"></div></div>`;
     }
   }
+}
+
+/** Nền tham số của phong cách tuỳ chỉnh: dải màu + hoa văn CSS + hạt nhiễu tĩnh – chỉ từ số/màu đã kiểm (buildCustomTheme). */
+function customGroundHtml(theme: Theme): string {
+  const c = theme.colors;
+  const g = theme.groundSpec ?? {};
+  const fill = g.gradient ? `linear-gradient(${g.gradient.angle}deg, ${g.gradient.from}, ${g.gradient.to})` : c.bg;
+  const s = g.patternSize ?? 48;
+  const ink = hexA(c.ink, g.patternOpacity ?? 0.08);
+  const pattern =
+    g.pattern === "dots" ? `background-image:radial-gradient(circle, ${ink} 1.8px, transparent 2.4px);background-size:${s}px ${s}px;`
+    : g.pattern === "grid" ? `background-image:linear-gradient(${ink} 1.5px,transparent 1.5px),linear-gradient(90deg,${ink} 1.5px,transparent 1.5px);background-size:${s}px ${s}px;`
+    : g.pattern === "lines" ? `background-image:linear-gradient(${ink} 1.5px,transparent 1.5px);background-size:100% ${s}px;`
+    : g.pattern === "diagonal" ? `background-image:repeating-linear-gradient(45deg, ${ink} 0 2px, transparent 2px ${s}px);`
+    : "";
+  const noise = g.noise ? `<svg width="1920" height="1080" style="position:absolute;inset:0;opacity:${g.noise}"><filter id="cvs-noise"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="9"/><feColorMatrix values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.35 0"/></filter><rect width="1920" height="1080" filter="url(#cvs-noise)"/></svg>` : "";
+  return `<div id="ground" data-layout-ignore style="position:absolute;inset:0;background:${fill};overflow:hidden;">${pattern ? `<div style="position:absolute;inset:0;${pattern}"></div>` : ""}${noise}</div>`;
 }

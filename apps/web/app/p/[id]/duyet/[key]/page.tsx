@@ -14,6 +14,24 @@ import type { OverlayView } from "@/components/overlay-settings";
 type QaItem = { kind: string; severity: string; scene?: string; message: string };
 type Row = { data: any; qa: { ok: boolean; items: QaItem[]; assumptions: Record<string, string[]>; sheet?: string; frames?: { file: string; label?: string; scene?: string }[]; rendered?: string; renderer?: string; renderedAt?: string } | null; approved: boolean; summary: VideoSum; timing: any };
 
+const KIND: Record<string, string> = { audio: "âm thanh", layout: "bố cục", content: "nội dung", terms: "thuật ngữ", vision: "soát hình", render: "video", assumption: "AI tự quyết", variety: "đa dạng cảnh" };
+
+type Decision = { template: string; alternatives: string[]; reason: string; confidence: number; by: "ai" | "claude-code" };
+/** Nhật ký quyết định của AI khi chọn template (gập lại mặc định). */
+function WhyAi({ d, current }: { d: Decision; current: string }) {
+  return (
+    <details className="mt-2 rounded-lg bg-paper px-3 py-2 text-[13px]">
+      <summary className="cursor-pointer font-medium">Vì sao AI chọn «{d.template}»</summary>
+      <p className="mt-1">{d.reason}</p>
+      <p className="mt-1 text-[12px] text-soft">
+        Độ tự tin <span className="tabular-nums">{Math.round(d.confidence * 100)}%</span> · {d.by === "claude-code" ? "Claude Code" : "Claude API"}
+        {d.alternatives.length ? <> · đã cân nhắc: {d.alternatives.join(", ")}</> : null}
+        {current !== d.template ? <> · cảnh hiện dùng «{current}»</> : null}
+      </p>
+    </details>
+  );
+}
+
 /** Đổi khi lời thoại/bản dịch đổi → trình phát tải lại phụ đề (không phát lại từ đầu). */
 const subsVer = (v: any) => {
   const s = JSON.stringify(v.scenes.map((x: any) => x.sentences.map((y: any) => [y.text, y.subs])));
@@ -102,9 +120,9 @@ export default function Duyet() {
         <div>
           <div className="card mb-4">
             <h2 className="mb-2 font-semibold">Báo cáo QA {qa ? (qa.ok ? <Badge tone="green">đạt</Badge> : <Badge tone="red">{errors.length} lỗi</Badge>) : <Badge>chưa chạy</Badge>}</h2>
-            {errors.map((i, k) => <div key={k} className="mb-1 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-danger">[{i.kind}{i.scene ? ` · ${i.scene}` : ""}] {i.message}</div>)}
-            {warns.map((i, k) => <div key={k} className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">[{i.kind}{i.scene ? ` · ${i.scene}` : ""}] {i.message}</div>)}
-            {qa && qa.items.length === 0 && <div className="text-sm text-brand-dark">Không phát hiện lỗi: bố cục, chữ ≥ 28 px, số liệu khớp nguồn, âm thanh AAC, không im lặng &gt; 2,5 s, thời lượng khớp.</div>}
+            {errors.map((i, k) => <div key={k} className="mb-1 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-danger">[{KIND[i.kind] ?? i.kind}{i.scene ? ` · ${i.scene}` : ""}] {i.message}</div>)}
+            {warns.map((i, k) => <div key={k} className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">[{KIND[i.kind] ?? i.kind}{i.scene ? ` · ${i.scene}` : ""}] {i.message}</div>)}
+            {qa && qa.items.length === 0 && <div className="text-sm text-brand-dark">Không phát hiện lỗi: bố cục, chữ ≥ 28 px, số liệu khớp nguồn, âm thanh AAC −16 LUFS, không im lặng &gt; 2,5 s, không màn hình đen/đứng hình, thời lượng khớp.</div>}
           </div>
           <div className="card mb-4 p-0">
             <div className="px-5 pt-4 sm:px-5">
@@ -131,6 +149,7 @@ export default function Duyet() {
                     {sel && (
                       <div className="px-4 pb-4 sm:px-5">
                         {list.map((x, k) => <div key={k} className="assume mt-1">{x}</div>)}
+                        {s.design?.decision && <WhyAi d={s.design.decision} current={s.design.template} />}
                         <div className="mt-3"><ScenePrompt pid={pid} vkey={key} scene={s} busy={!!job} onQueued={reload} /></div>
                         <button className="mt-2 text-[12px] text-soft underline" onClick={() => custom(s.id)}>{claude.data?.available === false ? "Hoặc để Claude Code viết lại cảnh này từ đầu (mã tùy biến)" : "Hoặc để AI viết lại cảnh này từ đầu (mã tùy biến)"}</button>
                       </div>

@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeJsonAtomic, type EngineId, type GlossaryEntry, type LogoSettings, type StyleId, type SubtitleSettings, type Video, type VoiceProvider } from "@cvs/core";
+import { writeJsonAtomic, type EngineId, type GlossaryEntry, type LogoSettings, type MusicSettings, type StyleId, type SubtitleSettings, type Video, type VoiceProvider } from "@cvs/core";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..", "..");
@@ -26,6 +26,11 @@ export const paths = {
   archive: (pid: string) => join(STORAGE, "projects", pid, "_luu_tru"),
   samples: () => join(STORAGE, "samples"),
   styles: () => join(STORAGE, "styles"),
+  /** Phong cách tuỳ chỉnh của dự án (<mã>.json) và thư viện dùng chung mọi dự án. */
+  themes: (pid: string) => join(STORAGE, "projects", pid, "themes"),
+  themeLibrary: () => join(STORAGE, "themes"),
+  /** Tư liệu tham chiếu cho "Tạo phong cách bằng AI": video mẫu + khung trích, ảnh thu nhỏ, đề bài. */
+  styleRefs: (pid: string) => join(STORAGE, "projects", pid, "style-refs"),
 };
 
 export type ProjectSettings = {
@@ -50,6 +55,8 @@ export type ProjectSettings = {
   /** Phụ đề (trình phát / gắn cứng, ngôn ngữ) và logo phủ lên video – xem @cvs/core overlay. */
   subtitle?: SubtitleSettings;
   logo?: LogoSettings;
+  /** Nhạc nền + chuẩn hoá âm lượng khi trộn tiếng cuối (null/thiếu = chỉ chuẩn hoá giọng). */
+  music?: MusicSettings | null;
 };
 
 export type Project = { id: string; name: string; course: string; levels: string[]; settings: ProjectSettings; created_at: string };
@@ -69,7 +76,7 @@ export type VideoRow = {
   qa: unknown | null;
   updated_at: string;
 };
-export type JobKind = "agent" | "produce" | "voice" | "visual" | "render" | "design" | "ai-script" | "theme-preview" | "voice-sample" | "revise" | "reading-review" | "analyze-doc" | "translate-subs";
+export type JobKind = "agent" | "produce" | "voice" | "visual" | "render" | "design" | "ai-script" | "theme-preview" | "voice-sample" | "revise" | "reading-review" | "analyze-doc" | "translate-subs" | "style-gen" | "remix";
 export type JobStatus = "queued" | "running" | "done" | "failed" | "paused" | "canceled";
 export type Job = {
   id: number;
@@ -283,7 +290,7 @@ export function listVoices(provider?: string) {
 }
 
 // ---------- yêu cầu AI chờ Claude Code (gói Claude đã đăng ký, không dùng API) ----------
-export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "review-readings", "agent", "analyze-doc", "write-script", "translate-subs"] as const;
+export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "review-readings", "agent", "analyze-doc", "write-script", "translate-subs", "style-gen"] as const;
 export type ClaudeRequestKind = (typeof CLAUDE_REQUEST_KINDS)[number];
 export type ClaudeRequestStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 export type ClaudeRequest = {

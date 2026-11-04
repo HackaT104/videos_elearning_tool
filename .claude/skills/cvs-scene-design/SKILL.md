@@ -42,6 +42,9 @@ SceneSpec → GSAP `fromTo` (HyperFrames) và `interpolate` (Remotion) phải ra
 - [ ] Cảnh template: ra cảnh do engine lo (blur 8 px + mờ 0,3 s `power3.in` tại `T.dur − 0.45`), không tự thêm exit chồng. Cảnh tùy biến: engine **không** thêm exit/máy quay → phải tự viết exit đúng hợp đồng (lint không bắt thiếu exit).
 - [ ] Màu theo vai trò: `accent` chính, `alt` đối trọng, `money` tiền, `warn` chỉ rủi ro/chi phí; mỗi khung một màu nhấn chính.
 - [ ] Chữ ≥ 28 px (dòng nguồn 22–24 px); vùng an toàn x 96–1824, y 54–1026; mặt nạ tràn chừa ≥ 0,3 em cho dấu tiếng Việt.
+- [ ] Đa dạng cả video (tránh "trình chiếu"): không hai cảnh liền nhau cùng template; một template ≤ 40 % số cảnh; ít cảnh chỉ có chữ
+      (title-card, quote-banner, kinetic-statement, term-define, checklist) khi nội dung vẽ được; cảnh ≥ 20 s cần ≥ 4 phần tử chuyển động.
+      QA kiểm bằng `varietyQa` (`packages/qa/src/variety.ts`) và hiện ở bước Sản xuất.
 - [ ] Không bịa số; chữ tự thêm → `assumptions`. Dòng nguồn `.src-line` do engine tự thêm ở cảnh cuối (cảnh template) khi video có `sources` – đừng thêm trùng.
 
 ## Đồng bộ với prompt trong ứng dụng

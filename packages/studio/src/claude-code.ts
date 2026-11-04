@@ -2,7 +2,7 @@
 // Prompt lấy đúng từ @cvs/ai (cùng quy tắc với đường API); kết quả ghi vào cảnh qua cùng bộ kiểm như AI trong app.
 
 import { checkTts, type Scene, type SceneDesign } from "@cvs/core";
-import { checkIllustration, customScenePrompt, designErrors, designPrompt, illustrationPrompt, readingsPrompt, reviewReadingsPrompt, translateSubsPrompt, type Prompt } from "@cvs/ai";
+import { checkIllustration, customScenePrompt, decisionFrom, designErrors, designPrompt, illustrationPrompt, readingsPrompt, reviewReadingsPrompt, translateSubsPrompt, type Prompt } from "@cvs/ai";
 import { getProject, getVideo, setVideoFlags, upsertVideo } from "@cvs/db";
 import { illustrationStyleHints } from "@cvs/engine";
 import { getTheme } from "@cvs/themes";
@@ -10,6 +10,7 @@ import { illustrationKey } from "./assets";
 import { docPlanPrompt, rewritePrompt } from "./docplan";
 import { currentTiming, customLint, customSceneInput, readingIssues } from "./pipeline";
 import { translateInput } from "./subs";
+import { styleGenPromptFor } from "./style-gen";
 
 export type SceneEdit = { design?: Partial<SceneDesign>; assumptions?: string[]; note?: string; by?: SceneDesign["by"] };
 
@@ -44,7 +45,8 @@ export function applySceneEdit(projectId: string, key: string, sceneId: string, 
       let params = isObj(d.params) ? { ...d.params } : {};
       errors.push(...designErrors(scene, { template: d.template, params }));
       if (d.template === "illustration" && !errors.length) params = illustrationParams(video.style, video.font, scene, params, errors);
-      design = { template: d.template, params, by };
+      const decision = isObj(d.decision) ? decisionFrom({ ...d.decision, template: d.template }, d.decision.by === "ai" ? "ai" : "claude-code") : undefined;
+      design = { template: d.template, params, by, ...(decision ? { decision } : {}) };
     }
   }
   if (errors.length) return { ok: false, errors };
@@ -77,11 +79,12 @@ function illustrationParams(style: string, font: string | undefined, scene: Scen
   return params;
 }
 
-export type PromptKind = "design" | "illustration" | "custom" | "readings" | "review-readings" | "analyze-doc" | "write-script" | "translate-subs";
+export type PromptKind = "design" | "illustration" | "custom" | "readings" | "review-readings" | "analyze-doc" | "write-script" | "translate-subs" | "style-gen";
 
 /** Prompt mà Claude API sẽ nhận cho việc này – Claude Code làm theo đúng prompt đó để chất lượng như đường API. "analyze-doc": key = mã tài liệu. */
 export async function claudeCodePrompt(projectId: string, key: string, kind: PromptKind, sceneId?: string, note?: string): Promise<Prompt> {
   if (kind === "analyze-doc") return docPlanPrompt(projectId, key);
+  if (kind === "style-gen") return styleGenPromptFor(projectId);
   if (kind === "write-script") return rewritePrompt(projectId, key);
   // dịch phụ đề: note = mã ngôn ngữ đích ("en", hoặc "en all" để dịch lại mọi câu)
   if (kind === "translate-subs") {

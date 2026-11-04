@@ -1,11 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { Badge, Msg, PageHead } from "@/components/ui";
-import { ClaudeCodeHowTo, ClaudeCodeLog, ClaudeCodeSetup, ClaudeCodeStatus, type Runner } from "@/components/claude-code";
+import { CC_PROMPT, ClaudeCodeHowTo, ClaudeCodeLog, ClaudeCodeSetup, ClaudeCodeStatus, type Runner } from "@/components/claude-code";
 
-type Status = { source: string; label: string; profiles: string[]; antInstalled: boolean; login: { running: boolean; url: string | null; message: string }; model: string; blocked?: string | null; available: boolean };
+type Status = { source: string; label: string; profiles: string[]; antInstalled: boolean; login: { running: boolean; url: string | null; message: string }; model: string; blocked?: string | null; available: boolean; useApi?: boolean };
 
 export default function ClaudePage() {
   const { data, reload } = useApi<Status>("/claude/status", 3000);
@@ -18,7 +18,14 @@ export default function ClaudePage() {
       <PageHead title="Kết nối Claude AI" />
       <div className="card mb-4">
         <h2 className="mb-1 font-semibold">Hai cách dùng Claude</h2>
-        <p className="text-sm text-soft">Ứng dụng tự chọn: có Claude API thì dùng API, không có thì gửi việc cho Claude Code.</p>
+        <p className="text-sm text-soft">Mặc định mọi việc AI chạy bằng <b className="font-medium text-ink">gói Claude đã đăng ký qua Claude Code</b>. Ứng dụng không bao giờ tự chuyển sang Claude API (tính phí) – chỉ dùng API khi bạn bật ô dưới đây.</p>
+        <label className="mt-3 flex items-start gap-2 rounded-lg bg-paper px-3 py-2 text-sm">
+          <input type="checkbox" className="mt-1" checked={!!data?.useApi} onChange={(e) => {
+            if (e.target.checked && !confirm("Bật Claude API? Mọi việc AI sẽ gọi Claude API và tính phí theo tài khoản Anthropic Console thay vì dùng gói Claude.")) return;
+            void api("/claude-code/settings", { method: "POST", json: { useApi: e.target.checked } }).then(() => reload());
+          }} />
+          <span>Dùng Claude API (tính phí theo lượng dùng) thay cho gói Claude. <span className="text-soft">Đang: {data?.useApi ? "Claude API" : "gói Claude qua Claude Code"}</span></span>
+        </label>
         {data?.blocked && <div className="msg mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Tạm dừng Claude API: {data.blocked}. Trong lúc này các nút AI chuyển sang "Gửi cho Claude Code"; ứng dụng thử lại API sau 10 phút hoặc ngay khi bạn lưu khoá mới.</div>}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div className={`rounded-lg p-3 shadow-[0_0_0_1px_rgb(19_34_43/0.1)] ${data?.available ? "bg-brand-tint" : ""}`}>
@@ -32,6 +39,7 @@ export default function ClaudePage() {
         </div>
       </div>
       <RunnerCard />
+      <DesktopCard />
       <div className="card mb-4">
         <div className="flex flex-wrap items-center gap-2">
           {data?.available ? <Badge tone="green">Đã đăng nhập</Badge> : <Badge tone="amber">Chưa đăng nhập</Badge>}
@@ -113,6 +121,73 @@ function RunnerCard() {
         <summary className="cursor-pointer text-soft">Tự mở Claude Code bằng tay (cách cũ)</summary>
         <div className="mt-2"><ClaudeCodeHowTo /></div>
       </details>
+    </div>
+  );
+}
+
+type Desktop = {
+  connected: boolean; upToDate: boolean; desktopFound: boolean; workerOk: boolean; prompt: string;
+  files: { path: string; exists: boolean; connected: boolean; upToDate: boolean; entryFileOk: boolean; apiOk: boolean; error: string | null }[];
+};
+
+/** Claude Desktop (gói Pro/Max): ghi máy chủ MCP course-video-studio vào cấu hình Claude Desktop; chỉ trên máy chạy ứng dụng. */
+function DesktopCard() {
+  const [d, setD] = useState<Desktop | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<{ files: { path: string; backup: string | null }[]; removed?: boolean } | null>(null);
+  const a = useAction();
+  const load = () => api<Desktop>("/claude-desktop/status", { method: "POST", json: {} }).then((x) => (setD(x), setErr(null))).catch((e) => setErr((e as Error).message));
+  useEffect(() => void load(), []);
+  const act = (path: "connect" | "disconnect") =>
+    a.run(async () => {
+      const r = await api<{ files: { path: string; backup: string | null }[]; status: Desktop }>(`/claude-desktop/${path}`, { method: "POST", json: {} });
+      setD(r.status);
+      setDone({ files: r.files, removed: path === "disconnect" });
+    });
+  const bad = d?.files.find((f) => f.error);
+  return (
+    <div className="card mb-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold">Claude Desktop (gói Claude Pro/Max)</h2>
+        {d && (d.connected ? (d.upToDate ? <Badge tone="green">Đã kết nối</Badge> : <Badge tone="amber">Cần kết nối lại</Badge>) : <Badge tone="amber">Chưa kết nối</Badge>)}
+      </div>
+      <p className="mt-1 text-sm text-soft">
+        Dùng ứng dụng chat Claude Desktop với gói đã đăng ký thay cho Claude Code: ứng dụng thêm công cụ <code>course-video-studio</code> (máy chủ MCP chạy trên máy này) để Claude đọc video,
+        lấy đúng quy tắc của ứng dụng, ghi thiết kế, xem ảnh khung QA và render. Bạn gõ lệnh trong Claude Desktop – không tự chạy.
+      </p>
+      {err && <p className="msg mt-2 text-[13px] text-danger">{err}</p>}
+      {d && (
+        <ul className="mt-3 space-y-1 text-[13px]">
+          <li>{d.desktopFound ? "Đã thấy thư mục cấu hình Claude Desktop." : "Chưa thấy Claude Desktop trên máy này – cài từ claude.ai/download (vẫn kết nối trước được)."}</li>
+          <li>Ứng dụng (worker) đang chạy: Claude Desktop chỉ dùng được công cụ khi Course Video Studio đang mở.</li>
+          {d.files.map((f) => (
+            <li key={f.path} className="break-all text-soft">
+              <code>{f.path}</code>{" "}
+              {f.error ? <span className="text-danger">– {f.error}</span> : f.connected ? (f.upToDate ? "– có mục course-video-studio" : `– mục cũ${!f.entryFileOk ? " (tệp chạy không còn)" : ""}${!f.apiOk ? " (sai cổng)" : ""}, bấm Kết nối lại`) : f.exists ? "– chưa có mục course-video-studio" : "– chưa có tệp (sẽ tạo)"}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button className="btn btn-primary" disabled={a.busy || !d || !!bad} onClick={() => act("connect")}>{d?.connected ? "Kết nối lại Claude Desktop" : "Kết nối Claude Desktop"}</button>
+        {d?.connected && <button className="btn" disabled={a.busy} onClick={() => act("disconnect")}>Gỡ kết nối</button>}
+        <button className="btn" disabled={a.busy} onClick={() => void load()}>Kiểm tra lại</button>
+      </div>
+      <Msg msg={a.msg} />
+      {done && (
+        <div className="msg mt-3 rounded-lg bg-paper p-3 text-[13px]" aria-live="polite">
+          {done.removed ? (
+            <p>{done.files.length ? "Đã gỡ course-video-studio khỏi cấu hình Claude Desktop. Khởi động lại Claude Desktop để áp dụng." : "Cấu hình không có mục course-video-studio – không cần gỡ."}</p>
+          ) : (
+            <ol className="list-decimal space-y-1 pl-5">
+              <li>Thoát hẳn Claude Desktop (cả biểu tượng ở khay hệ thống) rồi mở lại.</li>
+              <li>Trong ô chat, bấm nút công cụ và bật <b className="font-medium">course-video-studio</b>.</li>
+              <li>Gõ: <b className="select-all font-medium">«{CC_PROMPT}»</b> (hoặc chọn mẫu lệnh <i>xu-ly-yeu-cau-dang-cho</i>).</li>
+            </ol>
+          )}
+          {done.files.some((f) => f.backup) && <p className="mt-2 break-all text-soft">Bản sao lưu cấu hình cũ: {done.files.filter((f) => f.backup).map((f) => <code key={f.backup}>{f.backup} </code>)}</p>}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,9 +2,9 @@
 // Nguyên tắc: không bịa số liệu; mọi chữ AI tự thêm phải nằm trong assumptions để người duyệt thấy (màu vàng).
 
 import { readFileSync } from "node:fs";
-import { buildVideo, formatClock, numbersMatch, parseVideoFileName, SUB_LANGS, type DocUnit, type OutlineDoc, type ProjectDefaults, type Scene, type SceneDesign, type SceneTiming, type Video } from "@cvs/core";
+import { buildVideo, formatClock, numbersMatch, parseVideoFileName, SUB_LANGS, type DesignDecision, type DocUnit, type OutlineDoc, type ProjectDefaults, type Scene, type SceneDesign, type SceneTiming, type Video } from "@cvs/core";
 import { DESIGN_TEMPLATE_IDS, ICON_NAMES, sanitizeSvg, TEMPLATES, THEME_COLOR_VARS, validateParams } from "@cvs/engine";
-import { getTheme } from "@cvs/themes";
+import { buildCustomTheme, CARD_STYLES, COLOR_ROLES, FONT_PAIRS, getTheme, GROUND_PATTERNS, GROUND_STYLES, THEME_EASES, THEME_IDS, THEMES, type ThemeDraft, type ThemeId } from "@cvs/themes";
 import { AiError, ask, askJson } from "./client";
 
 export * from "./client";
@@ -263,7 +263,21 @@ export type DesignResult = { design: SceneDesign; assumptions: string[]; reasoni
 const designForPrompt = (d: SceneDesign) =>
   JSON.stringify(d, (k, v) => (k === "svg" && typeof v === "string" ? "(đã vẽ – giữ nguyên brief để giữ hình, đổi brief để vẽ lại)" : k === "svgKey" ? undefined : v));
 
-export type DesignReply = { template: string; params: Record<string, unknown>; assumptions: string[]; reasoning?: string };
+export type DesignReply = { template: string; params: Record<string, unknown>; assumptions: string[]; reasoning?: string; alternatives?: unknown; reason?: unknown; confidence?: unknown };
+
+/** Nhật ký quyết định từ trả lời của AI (trường tuỳ chọn – thiếu/sai thì bỏ qua, không làm hỏng thiết kế). */
+export function decisionFrom(r: { template: string; alternatives?: unknown; reason?: unknown; confidence?: unknown }, by: DesignDecision["by"]): DesignDecision | undefined {
+  const reason = typeof r.reason === "string" ? r.reason.trim().slice(0, 300) : "";
+  if (!reason) return undefined;
+  const alternatives = Array.isArray(r.alternatives) ? [...new Set(r.alternatives.filter((x): x is string => typeof x === "string" && x in TEMPLATES && x !== r.template && x !== "draft"))].slice(0, 3) : [];
+  let c = typeof r.confidence === "number" ? r.confidence : Number(r.confidence);
+  if (c > 1 && c <= 100) c /= 100;
+  return { template: r.template, alternatives, reason, confidence: Number.isFinite(c) ? Math.round(Math.max(0, Math.min(1, c)) * 100) / 100 : 0.5, by };
+}
+
+/** Template của các cảnh khác trong video (để AI giữ đa dạng, tránh "trình chiếu"). */
+const videoTemplates = (video: Video, scene: Scene) =>
+  video.scenes.map((s) => `${s.id}: ${s.id === scene.id ? "(cảnh này)" : s.design?.template ?? "chưa thiết kế"}`).join(", ");
 export type Prompt = { system: string; content: string };
 
 /** Prompt chọn template + điền tham số cho một cảnh (dùng chung cho Claude API và Claude Code). */
@@ -282,8 +296,10 @@ Yêu cầu:
 - Đặt "at": {"cue": i, "f": 0..1} cho từng phần tử để phần tử xuất hiện khi giọng đọc nói tới ý đó (cue từ 0 đến ${n - 1}).
 - Ưu tiên dùng nguyên văn "chữ trên màn hình"; chữ nào khác do bạn đặt → ghi vào "assumptions".
 - Có thể nhấn một cụm bằng **…**; chỉ số dưới viết CO₂.
+- Đa dạng (tránh video giống trình chiếu): không chọn trùng template với cảnh liền trước/liền sau; một template không quá 40% số cảnh của video; hạn chế cảnh chỉ có chữ (title-card, quote-banner, kinetic-statement, term-define, checklist) khi lời thoại có quan hệ, số liệu hay quy trình vẽ được. Template các cảnh trong video: ${videoTemplates(video, scene)}.
+- "alternatives": tối đa 3 template khác bạn đã cân nhắc; "reason": vì sao chọn template này (tiếng Việt, ≤ 25 từ); "confidence": độ tự tin 0..1.
 
-Trả về DUY NHẤT JSON: {"template": string, "params": object, "assumptions": string[], "reasoning": string}`,
+Trả về DUY NHẤT JSON: {"template": string, "params": object, "assumptions": string[], "reasoning": string, "alternatives": string[], "reason": string, "confidence": number}`,
   };
 }
 
@@ -308,7 +324,8 @@ export async function designScene(video: Video, scene: Scene, T?: SceneTiming, n
     delete r.params.svg;
     delete r.params.svgKey;
   }
-  return { design: { template: r.template, params: r.params, by: "ai" }, assumptions: r.assumptions ?? [], reasoning: r.reasoning };
+  const decision = decisionFrom(r, "ai");
+  return { design: { template: r.template, params: r.params, by: "ai", ...(decision ? { decision } : {}) }, assumptions: r.assumptions ?? [], reasoning: r.reasoning };
 }
 
 // ---------------- Hình minh hoạ (SVG) ----------------
@@ -576,4 +593,97 @@ export async function translateSubs(items: SubItem[], lang: string, context = ""
     onBatch?.(Math.min(i + TRANSLATE_BATCH, items.length), items.length);
   }
   return out;
+}
+
+// ---------------- Tạo phong cách bằng AI (vision) ----------------
+
+export type StyleGenInput = {
+  /** Mô tả của người dùng (tiếng Việt). */
+  prompt: string;
+  subject: { project: string; course: string; videoTitle?: string; scene?: { title: string; visual: string; onscreen: string[]; text: string } };
+  /** Phong cách gốc khi "chỉnh tiếp bằng lời". */
+  base?: { id: string; draft: ThemeDraft } | null;
+  images: number;
+  frames: number;
+};
+export type StyleGenReply = { theme: ThemeDraft; rationale: string; closest: string };
+
+const SAMPLE_DRAFT: ThemeDraft = {
+  name: "Gạch nung ấm",
+  description: "Nền kem sáng, đỏ gạch làm màu nhấn, thẻ viền mảnh bo nhẹ, chuyển động êm.",
+  colors: { bg: "#F7F1E8", bg2: "#EFE4D3", bg3: "#FFFDF8", grid: "#E6D9C4", ink: "#2B2420", inkSoft: "#665A50", accent: "#A6402A", alt: "#2F5F7A", money: "#7A5A12", warn: "#B03A2E", card: "#FFFDF8", cardBorder: "#D9C8AE", line: "#2B2420", highlight: "#F3D9B8" },
+  fontPair: "be-vietnam",
+  card: "outline",
+  ground: "custom",
+  groundSpec: { gradient: { angle: 160, from: "#F7F1E8", to: "#EFE4D3" }, pattern: "dots", patternOpacity: 0.08, patternSize: 40, noise: 0.12 },
+  radius: 14,
+  stroke: 3,
+  motion: { enterEase: "power3.out", enterDur: 0.7, moveEase: "power2.inOut", moveDur: 0.9, slowEnterEase: "sine.out", slowEnterDur: 1.1, rise: 24, camera: 0.012 },
+  kickerUpper: true,
+};
+
+/** Prompt dùng chung cho đường Claude API và Claude Code (ảnh: API đính kèm; Claude Code mở bằng Read từ `pnpm cvs style-refs`). */
+export function styleGenPrompt(i: StyleGenInput): Prompt {
+  const fonts = FONT_PAIRS.map((p) => `- ${p.id}: ${p.display.family}${p.body.family !== p.display.family ? ` + ${p.body.family}` : ""} – ${p.description}`).join("\n");
+  const themes = THEME_IDS.map((id) => `- ${id}: ${THEMES[id].name} (${THEMES[id].fonts.display.family}${THEMES[id].fonts.body.family !== THEMES[id].fonts.display.family ? ` + ${THEMES[id].fonts.body.family}` : ""}; thẻ ${THEMES[id].card}, nền ${THEMES[id].ground}) – ${THEMES[id].description}`).join("\n");
+  const system = `Bạn là giám đốc nghệ thuật cho video e-learning tiếng Việt 1920×1080 (TUV NORD). Nhiệm vụ: từ mô tả và ảnh tham chiếu của người dùng, dựng MỘT phong cách hình (theme) dùng cho mọi cảnh: màu theo vai trò, phông, kiểu thẻ, nền, bo góc, nét, nhịp chuyển động.
+
+QUY TẮC
+- Chỉ trả về JSON đúng schema. KHÔNG CSS, HTML, URL, mã hay khoá lạ – máy chủ từ chối mọi khoá ngoài schema.
+- Màu: mã hex #RRGGBB. Vai trò: bg (nền chính), bg2/bg3 (nền phụ, dải màu), grid (đường lưới mờ), ink (chữ chính), inkSoft (chữ phụ), accent (màu nhấn chính – giải pháp/kết quả), alt (màu phụ – thông tin), money (tiền/giá trị), warn (CHỈ rủi ro/chi phí), card (nền thẻ), cardBorder (viền thẻ), line (nét sơ đồ), highlight (mảng tô nhấn – không làm màu chữ).
+- ink, inkSoft, accent, alt, money, warn là màu CHỮ: phải đạt tương phản ≥ 4,5:1 trên bg VÀ trên card (và trên hai đầu groundSpec.gradient nếu có). Máy chủ tự chỉnh độ sáng màu chưa đạt và báo lại – hãy chọn đúng ngay từ đầu. Ưu tiên card gần độ sáng với bg.
+- Lấy cảm hứng từ ảnh/khung hình: bảng màu chủ đạo, độ tương phản, cảm giác (tối/sáng, ấm/lạnh, phẳng/có kết cấu), kiểu chữ (có chân/không chân/tròn/viết tay/hẹp), nhịp cắt cảnh. Không chép logo, nhận diện thương hiệu hay giao diện của tổ chức thật.
+- Hợp nội dung khoá học và người học; chữ phải dễ đọc trên video. Nền tối thì tránh dải màu lớn (vệt màu khi nén H.264): dùng nền phẳng + hoa văn/hạt nhẹ.
+- name, description, rationale viết bằng tiếng Việt có dấu. name ≤ 40 ký tự; description 1 câu; rationale 2–4 câu giải thích chọn màu/phông/nền từ tham chiếu nào.
+
+GIÁ TRỊ ĐƯỢC PHÉP
+- fontPair: một mã cặp phông dưới đây, HOẶC mã một phong cách sẵn có (dùng nguyên bộ phông của phong cách đó). Mọi phông đủ dấu tiếng Việt.
+${fonts}
+- card: ${CARD_STYLES.join(" | ")} (outline = viền mảnh; glow = phát sáng, hợp nền tối; solid-shadow = bóng đặc lệch; rule = chỉ một vạch trên, kiểu tạp chí; sketch = viền vẽ tay; bar = vạch màu bên trái; riso = viền màu nhấn + bóng mờ; tech = vạch màu trên + viền; block = viền đậm + bóng mảng highlight)
+- ground: một nền của phong cách sẵn có (${GROUND_STYLES.filter((g) => g !== "custom").join(" | ")}) HOẶC "custom" kèm groundSpec: {"gradient": {"angle": 0–360, "from": "#hex", "to": "#hex"} (tuỳ chọn), "pattern": ${GROUND_PATTERNS.join(" | ")}, "patternOpacity": 0.03–0.25, "patternSize": 16–120, "noise": 0–0.3}.
+- radius 0–40 (px), stroke 1–6 (px).
+- motion: enterEase/moveEase/slowEnterEase ∈ ${THEME_EASES.join(" | ")}; enterDur 0.3–1.5; moveDur 0.4–1.8; slowEnterDur 0.6–2.0 (giây); rise 0–60 (px trượt khi vào); camera 0–0.04 (máy quay đẩy chậm cả cảnh; 0 = tắt). Phong cách năng động: ease mạnh, dur ngắn; trang trọng: sine/power2, dur dài, rise nhỏ.
+- kickerUpper: true = tiêu đề phụ IN HOA giãn chữ.
+- closest: mã phong cách sẵn có gần nhất:
+${themes}`;
+  const s = i.subject;
+  const content = `MÔ TẢ CỦA NGƯỜI DÙNG:
+${i.prompt.trim() || "(không có – dựa vào ảnh tham chiếu)"}
+
+ẢNH THAM CHIẾU: ${i.images} ảnh người dùng tải lên + ${i.frames} khung hình trích từ video mẫu${i.images + i.frames ? " (xem trước phần này; Claude Code: mở từng ảnh bằng Read theo đường dẫn từ `pnpm cvs style-refs`)" : ""}.
+
+CHỦ ĐỀ VIDEO: dự án «${s.project}» (khoá ${s.course})${s.videoTitle ? `, video «${s.videoTitle}»` : ""}.
+${s.scene ? `Cảnh tiêu biểu: ${s.scene.title} – hình: ${s.scene.visual}; chữ trên màn hình: ${s.scene.onscreen.join(" | ") || "(không)"}; lời: ${s.scene.text.slice(0, 400)}` : ""}
+${i.base ? `\nPHONG CÁCH HIỆN TẠI (${i.base.id}) – giữ làm gốc, chỉ đổi theo mô tả mới:\n${JSON.stringify(i.base.draft)}\n` : ""}
+Trả về DUY NHẤT JSON:
+{"theme": {"name", "description", "colors": {${COLOR_ROLES.join(", ")}}, "fontPair", "card", "ground", "groundSpec"?, "radius", "stroke", "motion": {enterEase, enterDur, moveEase, moveDur, slowEnterEase, slowEnterDur, rise, camera}, "kickerUpper"}, "rationale": string, "closest": string}
+Ví dụ (chỉ minh hoạ dạng):
+${JSON.stringify({ theme: SAMPLE_DRAFT, rationale: "…", closest: "am-moc" })}`;
+  return { system, content };
+}
+
+/** Lỗi của câu trả lời tạo phong cách (đường API gửi lại cho Claude; Claude Code nhận qua set-theme). */
+export function styleGenErrors(v: unknown): string[] {
+  const r = v as Partial<StyleGenReply> | null;
+  if (!r || typeof r !== "object") return ["Cần JSON {theme, rationale, closest}"];
+  const errs = buildCustomTheme(r.theme, "tuy-chinh-kiem-tra").errors;
+  if (typeof r.rationale !== "string" || !r.rationale.trim()) errs.push('"rationale" cần 2–4 câu giải thích (tiếng Việt)');
+  if (!THEME_IDS.includes(r.closest as ThemeId)) errs.push(`"closest" phải là mã phong cách sẵn có: ${THEME_IDS.join(", ")}`);
+  return errs;
+}
+
+const IMG_TYPE: Record<string, "image/jpeg" | "image/png" | "image/webp"> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+
+/** Claude (vision) dựng phong cách từ mô tả + ảnh tham chiếu (file jpg/png/webp đã thu nhỏ). */
+export async function generateStyle(i: StyleGenInput, images: { file: string; label: string }[]): Promise<StyleGenReply> {
+  const p = styleGenPrompt(i);
+  const content: any[] = [];
+  for (const f of images.slice(0, 14)) {
+    const type = IMG_TYPE[f.file.split(".").pop()!.toLowerCase()];
+    if (!type) continue;
+    content.push({ type: "text", text: f.label });
+    content.push({ type: "image", source: { type: "base64", media_type: type, data: readFileSync(f.file).toString("base64") } });
+  }
+  content.push({ type: "text", text: p.content });
+  return askJson<StyleGenReply>({ system: p.system, content, effort: "medium", maxTokens: 16000 }, styleGenErrors);
 }

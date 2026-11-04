@@ -7,7 +7,8 @@ const nextConfig = {
   // @cvs/core/overlay (thuần TS, không module Node): xem trước phụ đề/logo dùng đúng phép tính của bộ dựng
   transpilePackages: ["@cvs/core"],
   devIndicators: false,
-  experimental: { proxyTimeout: 30 * 60 * 1000 },
+  // middleware đọc trước thân yêu cầu (mặc định chỉ 10 MB) – video tham chiếu tới 200 MB
+  experimental: { proxyTimeout: 30 * 60 * 1000, middlewareClientMaxBodySize: "210mb" },
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${API}/api/:path*` }];
   },

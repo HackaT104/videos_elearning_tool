@@ -33,6 +33,8 @@ if (-not $SkipInstall) {
 }
 Step "Dựng giao diện"
 pnpm --filter @cvs/web build; Check "Dựng giao diện"
+Step "Dựng máy chủ MCP cho Claude Desktop (apps/mcp/dist/cvs-mcp.mjs)"
+pnpm --filter @cvs/mcp build; Check "Dựng máy chủ MCP"
 
 Step "Gom payload"
 if (Test-Path $Build) { Remove-Item -Recurse -Force $Build }

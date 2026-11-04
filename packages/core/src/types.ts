@@ -16,7 +16,9 @@ export type StyleId =
   | "ky-thuat-so-toi"
   | "am-moc"
   | "khoi-mau-tap-chi"
-  | "danh-muc-tinh";
+  | "danh-muc-tinh"
+  /** Phong cách tuỳ chỉnh (AI tạo) – @cvs/themes getTheme() tra trong storage. */
+  | `tuy-chinh-${string}`;
 export type EngineId = "hyperframes" | "remotion";
 export type VoiceProvider = "cit" | "edge" | "zerotts";
 export type LevelTier = "co-ban" | "trung-cap" | "chuyen-sau";
@@ -45,6 +47,19 @@ export type SceneDesign = {
   customCode?: { hyperframes?: string; remotion?: string };
   /** Nguồn thiết kế: tự động (heuristic), AI, hay người dùng. */
   by: "auto" | "ai" | "user";
+  /** Nhật ký quyết định khi AI chọn template ("Vì sao AI chọn"). */
+  decision?: DesignDecision;
+};
+
+export type DesignDecision = {
+  template: string;
+  /** Các template khác AI đã cân nhắc (≤ 3). */
+  alternatives: string[];
+  /** Lý do ngắn, tiếng Việt. */
+  reason: string;
+  /** Độ tự tin 0..1. */
+  confidence: number;
+  by: "ai" | "claude-code";
 };
 
 export type Scene = {
@@ -168,4 +183,18 @@ export type ParseResult = {
   outline?: OutlineDoc;
   topic?: string;
   warnings: string[];
+};
+
+/** Nhạc nền của dự án (settings.music): file trong dự án (music/) hoặc thư viện chung (storage/am-nhac). */
+export type MusicSettings = {
+  file: string;
+  source: "project" | "library";
+  /** Mức nhạc so với giọng đã chuẩn hoá (LU, âm; mặc định −20). */
+  volumeDb: number;
+  /** Nhạc tự hạ khi có giọng đọc. */
+  duck: boolean;
+  fadeIn: number;
+  fadeOut: number;
+  /** Ghi chú giấy phép / nguồn nhạc (người dùng nhập). */
+  license?: string;
 };

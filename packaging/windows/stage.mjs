@@ -83,5 +83,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error("Cách dùng: node packaging/windows/stage.mjs --out <thư mục>");
     process.exit(2);
   }
+  // máy chủ MCP cho Claude Desktop chạy bằng node.exe đi kèm từ bản dựng một tệp (sharp nằm trong node_modules)
+  if (!existsSync(join(ROOT, "apps", "mcp", "dist", "cvs-mcp.mjs"))) {
+    console.error("Thiếu apps/mcp/dist/cvs-mcp.mjs – chạy: pnpm --filter @cvs/mcp build");
+    process.exit(2);
+  }
   stage(ROOT, resolve(process.argv[i + 1]));
 }

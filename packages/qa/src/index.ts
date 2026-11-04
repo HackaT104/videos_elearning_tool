@@ -3,8 +3,12 @@
 import { DEFAULT_TERM_RULES, MAX_SILENCE, type TermRule, type Timing, type Video } from "@cvs/core";
 import { buildSceneSpec, plain, type LayoutIssue } from "@cvs/engine";
 import { probe, silenceDetect } from "@cvs/tts";
+import { formatItems, mediaQa } from "./media";
 
-export type QaItem = { kind: "audio" | "layout" | "content" | "terms" | "vision" | "render" | "assumption"; severity: "error" | "warning" | "info"; scene?: string; message: string };
+export * from "./media";
+export * from "./variety";
+
+export type QaItem = { kind: "audio" | "layout" | "content" | "terms" | "vision" | "render" | "assumption" | "variety"; severity: "error" | "warning" | "info"; scene?: string; message: string };
 
 export type QaReport = {
   videoKey: string;
@@ -17,19 +21,20 @@ export type QaReport = {
   checkedAt: string;
 };
 
-/** Âm thanh: có luồng AAC, không có đoạn im lặng ≥ 2,5 s, thời lượng khớp timing (±0,2 s). */
+/**
+ * Kiểm MP4 sau render: H.264 1920×1080 30 fps + AAC, thời lượng khớp timing (±0,15 s), không im lặng ≥ 2,5 s,
+ * không màn hình đen > 0,5 s / hình đứng lâu hơn nhịp của cảnh, độ to −16 LUFS / −1,5 dBTP, không méo.
+ */
 export async function audioQa(file: string, timing: Timing): Promise<QaItem[]> {
-  const items: QaItem[] = [];
   const info = await probe(file);
-  if (!info.streams.some((s) => s.codec_type === "audio" && s.codec_name === "aac")) items.push({ kind: "audio", severity: "error", message: "Video không có luồng âm thanh AAC" });
-  if (!info.streams.some((s) => s.codec_type === "video" && s.codec_name === "h264" && s.width === 1920 && s.height === 1080)) items.push({ kind: "render", severity: "error", message: "Video không phải H.264 1920×1080" });
-  if (Math.abs(info.duration - timing.total) > 0.2) items.push({ kind: "render", severity: "error", message: `Thời lượng ${info.duration.toFixed(2)} s lệch timing ${timing.total.toFixed(2)} s (> 0,2 s)` });
+  const items: QaItem[] = formatItems(info, timing);
   const sil = await silenceDetect(file, -45, MAX_SILENCE);
   for (const s of sil) {
     const end = Number.isFinite(s.end) ? s.end : info.duration;
     const scene = timing.scenes.find((x) => s.start >= x.start && s.start < x.start + x.dur)?.id;
     items.push({ kind: "audio", severity: "error", scene, message: `Im lặng ${(end - s.start).toFixed(1)} s tại ${s.start.toFixed(1)} s (giới hạn ${MAX_SILENCE} s) – người nghe sẽ tưởng mất tiếng` });
   }
+  items.push(...(await mediaQa(file, info, timing)).items);
   if (timing.estimated) items.push({ kind: "audio", severity: "error", message: "Còn cảnh chưa có giọng thật (timing ước tính)" });
   return items;
 }

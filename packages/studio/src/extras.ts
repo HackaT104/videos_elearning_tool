@@ -10,10 +10,14 @@ import { aiAvailable, reviseScene, writeOutline, writeScript } from "@cvs/ai";
 import { addFile, getProject, getVideo, glossaryFor, listVideos, paths, setVideoFlags, STORAGE, updateProject, upsertVideo, type ProjectSettings } from "@cvs/db";
 import { effectiveDesign, qaTimes } from "@cvs/engine";
 import { hfBuild, hfPreview, launchBrowser } from "@cvs/engine-hf";
-import { THEME_IDS, THEMES } from "@cvs/themes";
+import { getTheme, isCustomThemeId, THEME_IDS } from "@cvs/themes";
 import { CitClient, ensureZerottsRunning, mockGenerate, probe, synthesizeSample, ZerottsClient } from "@cvs/tts";
 import { currentTiming, makeCustomScene, stepBuild, stepQa, type Ctx } from "./pipeline";
 import { videoVtt } from "./subs";
+import { projectThemeIds } from "./style-gen";
+import { assetCredit } from "./assets";
+import { attributionLine, videoCredits } from "./stock";
+import { listMusic } from "./music";
 
 // ---------- Xuất ----------
 
@@ -52,6 +56,7 @@ export async function exportProject(projectId: string, opts: { onlyApproved?: bo
   const files: string[] = [];
   const skipped: ExportResult["skipped"] = [];
   const rows: string[] = ["Mã video\tThời lượng\tTiêu đề\tGiọng\tPhong cách\tBộ dựng\tCấp độ"];
+  const attribution: string[] = [];
   for (const v of listVideos(projectId)) {
     if (!v.include || v.existing) continue;
     const src = paths.render(projectId, v.key);
@@ -74,13 +79,24 @@ export async function exportProject(projectId: string, opts: { onlyApproved?: bo
       const script = v.data.scenes.map((s) => `[${s.id}] ${s.title}\r\n${s.sentences.map((x) => x.text).join(" ")}`).join("\r\n\r\n");
       writeFileSync(join(dir, `${v.key}.txt`), "\ufeff" + `${v.data.title}\r\n\r\n${script}\r\n`, "utf8");
     }
+    // ảnh từ kho miễn phí: credits.txt theo video + mục "Nguồn ảnh" trong danh mục
+    const credits = videoCredits(v.data, (id) => assetCredit(projectId, id), resolveOverlay(project.settings, v.data).logo.assetId);
+    if (credits.length) {
+      const lines = credits.map((c) => `${c.scenes.join(", ")}: ${attributionLine(c.credit)}`);
+      writeFileSync(join(dir, `${v.key}.credits.txt`), "\ufeff" + [`Nguồn ảnh – ${v.data.title}`, "", ...lines].join("\r\n") + "\r\n", "utf8");
+      attribution.push(...lines.map((l) => `${v.key} ${l}`));
+    }
     const info = await probe(dst);
     const s = Math.round(info.duration);
     const voice = `${v.data.voice.provider.toUpperCase()} ${v.data.voice.voiceId} ×${v.data.voice.speed}`;
-    rows.push([v.key, `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`, v.data.title, voice, THEMES[v.data.style as StyleId]?.name ?? v.data.style, v.data.engine, v.level].join("\t"));
+    rows.push([v.key, `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`, v.data.title, voice, getTheme(v.data.style, null).name, v.data.engine, v.level].join("\t"));
   }
   // UTF-8 BOM + CRLF để mở đúng trên Windows (Notepad/Excel)
   const catalog = join(outDir, "DANH_MUC_VIDEO.txt");
+  const music = project.settings.music;
+  const musicName = music ? (() => { const l = listMusic(projectId); return [...l.project, ...l.library].find((x) => x.id === music.file && x.source === music.source)?.name ?? music.file; })() : "";
+  if (music) attribution.push(`Nhạc nền (mọi video): ${musicName}${music.license ? ` – ${music.license}` : " – chưa ghi giấy phép"}`);
+  if (attribution.length) rows.push("", "Nguồn ảnh và nhạc", ...attribution);
   writeFileSync(catalog, "\ufeff" + rows.join("\r\n") + "\r\n", "utf8");
   updateProject(projectId, { settings: { ...(dest ? { exportDir: dest } : {}), lastExport: { dir: outDir, at: new Date().toISOString(), files: files.length } } });
   return { dir: outDir, files, skipped, catalog };
@@ -247,7 +263,19 @@ export async function voiceSamples(text: string, voices: VoiceConfig[]): Promise
 
 // ---------- So sánh phong cách: cùng một khung mẫu theo mọi phong cách (THEME_IDS) ----------
 
-export async function stylePreview(projectId: string, key: string | null, sceneId?: string): Promise<{ style: StyleId; file: string }[]> {
+/** Cảnh đại diện: ưu tiên cảnh có hình phong phú (so sánh, quy trình, số liệu…) để thấy rõ khác biệt giữa các phong cách. */
+export function representativeScene(video: Video, sceneId?: string) {
+  const plain = ["title-card", "draft", "quote-banner"];
+  return (
+    video.scenes.find((s) => s.id === sceneId) ??
+    video.scenes.find((s) => !plain.includes(effectiveDesign(video, s).template)) ??
+    video.scenes.find((s) => effectiveDesign(video, s).template !== "draft") ??
+    video.scenes[0]
+  );
+}
+
+/** `styles`: mặc định mọi phong cách sẵn có + phong cách tuỳ chỉnh của dự án; truyền một mã để dựng riêng phong cách đó. */
+export async function stylePreview(projectId: string, key: string | null, sceneId?: string, styles: StyleId[] = [...THEME_IDS, ...projectThemeIds(projectId)]): Promise<{ style: StyleId; file: string }[]> {
   let video: Video;
   if (key) video = structuredClone(getVideo(projectId, key)!.data);
   else {
@@ -278,19 +306,12 @@ export async function stylePreview(projectId: string, key: string | null, sceneI
       ],
     };
   }
-  // Cảnh đại diện: ưu tiên cảnh có hình phong phú (so sánh, quy trình, số liệu…) để thấy rõ khác biệt giữa các phong cách.
-  const plain = ["title-card", "draft", "quote-banner"];
-  const scene =
-    video.scenes.find((s) => s.id === sceneId) ??
-    video.scenes.find((s) => !plain.includes(effectiveDesign(video, s).template)) ??
-    video.scenes.find((s) => effectiveDesign(video, s).template !== "draft") ??
-    video.scenes[0];
-  video.scenes = [scene];
+  video.scenes = [representativeScene(video, sceneId)];
   const dir = join(paths.project(projectId), "styles", key ?? "mau");
   const browser = await launchBrowser();
   const out: { style: StyleId; file: string }[] = [];
   try {
-    for (const style of THEME_IDS) {
+    for (const style of styles) {
       const v = { ...video, style, key: `${video.key}-${style}` };
       const timing = currentTiming(projectId, v);
       const work = join(dir, style);
@@ -383,7 +404,8 @@ export function listStylePreviews(projectId: string): { key: string; styles: { s
   const dir = join(paths.project(projectId), "styles");
   if (!existsSync(dir)) return null;
   const sets = readdirSync(dir)
-    .map((k) => ({ k, files: THEME_IDS.map((s) => ({ style: s, file: join(dir, k, `${s}.png`) })).filter((x) => existsSync(x.file)) }))
+    .filter((k) => statSync(join(dir, k)).isDirectory())
+    .map((k) => ({ k, files: readdirSync(join(dir, k)).filter((f) => f.endsWith(".png")).map((f) => f.replace(/\.png$/, "") as StyleId).filter((st) => THEME_IDS.includes(st as never) || isCustomThemeId(st)).map((st) => ({ style: st, file: join(dir, k, `${st}.png`) })) }))
     .filter((x) => x.files.length > 0)
     .map((x) => ({ ...x, t: Math.max(...x.files.map((f) => statSync(f.file).mtimeMs)) }))
     .sort((a, b) => b.t - a.t);

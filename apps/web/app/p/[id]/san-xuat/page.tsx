@@ -32,6 +32,7 @@ export default function SanXuat() {
   const storage = useApi<{ storage: string }>("/health");
   const a = useAction();
   const prog = useApi<{ reading: number; styleConfirmed: boolean; citOk: boolean }>(`/projects/${pid}/progress`, 5000);
+  const variety = useApi<{ key: string; items: { scene?: string; message: string }[] }[]>(`/projects/${pid}/variety`, 30000);
   const [ignoreReading, setIgnoreReading] = useState(false);
   const claude = useApi<{ available: boolean }>("/claude/status", 10000);
   // Claude Code (gói đã đăng ký) luôn có; Claude API chỉ hiện khi đã kết nối
@@ -67,6 +68,20 @@ export default function SanXuat() {
               <span className="min-w-0"><span className="font-medium">Claude AI:</span> {claude.data?.available ? "đã kết nối API, dùng được agent" : <>chưa có API, việc AI do <b className="font-medium">Claude Code</b> (gói đã đăng ký) làm <Link className="text-brand underline" href="/claude">xem cách dùng</Link></>}</span></li>
             <li className="flex items-start gap-2.5"><Check s={pre.citOk ? "ok" : "bad"} />
               <span className="min-w-0"><span className="font-medium">CIT Voice Studio:</span> {pre.citOk ? "đang chạy" : <CitLight />}</span></li>
+            {variety.data && (
+              <li className="flex items-start gap-2.5"><Check s={variety.data.length ? "warn" : "ok"} />
+                <span className="min-w-0"><span className="font-medium">Đa dạng cảnh:</span>{" "}
+                  {!variety.data.length ? "không có nguy cơ giống trình chiếu" : (
+                    <details className="inline">
+                      <summary className="cursor-pointer text-amber-900">{variety.data.length} video dễ giống trình chiếu (không chặn sản xuất)</summary>
+                      <ul className="mt-1 space-y-1 text-[13px] text-soft">
+                        {variety.data.map((v) => (
+                          <li key={v.key}><Link className="font-medium text-brand underline" href={`/p/${pid}/duyet/${encodeURIComponent(v.key)}`}>{v.key}</Link>: {v.items.map((i) => `${i.scene ? `${i.scene} – ` : ""}${i.message}`).join(" · ")}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}</span></li>
+            )}
           </ul>
         </div>
       )}

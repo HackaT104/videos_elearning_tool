@@ -20,10 +20,28 @@ export type ThemeId =
   | "khoi-mau-tap-chi"
   | "danh-muc-tinh";
 
+/** Phong cách tuỳ chỉnh (AI tạo / người dùng chỉnh) – lưu trong storage, getTheme() tìm qua bộ tra cứu đăng ký lúc chạy. */
+export type CustomThemeId = `tuy-chinh-${string}`;
+export const CUSTOM_THEME_PREFIX = "tuy-chinh-";
+export const isCustomThemeId = (id: unknown): id is CustomThemeId => typeof id === "string" && /^tuy-chinh-[a-z0-9-]{1,60}$/.test(id);
+
+/** Nền tham số cho phong cách tuỳ chỉnh (ground "custom"): chỉ số và màu đã kiểm – không nhận CSS thô. */
+export type GroundSpec = {
+  /** Dải chuyển màu tuyến tính (góc độ, hai màu hex). */
+  gradient?: { angle: number; from: string; to: string };
+  pattern?: "none" | "dots" | "grid" | "lines" | "diagonal";
+  /** Độ đậm hoa văn (màu mực), 0,03–0,25. */
+  patternOpacity?: number;
+  /** Bước hoa văn (px), 16–120. */
+  patternSize?: number;
+  /** Hạt nhiễu tĩnh (seed cố định), 0–0,3. */
+  noise?: number;
+};
+
 export type FontRef = { family: string; pkg: string; weight: number; /** Họ dự phòng chung; mặc định sans-serif. */ generic?: "sans-serif" | "serif" | "cursive" | "monospace"; /** Phần dấu chồng tầng (Ấ, Ữ…) vượt trên hộp dòng, theo em; mặc định 0,12 (xem viPad). */ viPadEm?: number };
 
 export type Theme = {
-  id: ThemeId;
+  id: ThemeId | CustomThemeId;
   name: string;
   description: string;
   dark: boolean;
@@ -54,7 +72,9 @@ export type Theme = {
   /** Kiểu thẻ. */
   card: "outline" | "glow" | "solid-shadow" | "rule" | "sketch" | "bar" | "riso" | "tech" | "block";
   /** Kiểu nền. */
-  ground: "grid" | "radial" | "cream" | "paper" | "whiteboard" | "plain" | "blueprint" | "forest" | "pastel" | "hazard" | "riso" | "dots" | "grain" | "blocks" | "atlas";
+  ground: "grid" | "radial" | "cream" | "paper" | "whiteboard" | "plain" | "blueprint" | "forest" | "pastel" | "hazard" | "riso" | "dots" | "grain" | "blocks" | "atlas" | "custom";
+  /** Tham số nền khi ground = "custom" (chỉ phong cách tuỳ chỉnh). */
+  groundSpec?: GroundSpec;
   motion: {
     enterEase: string;
     enterDur: number;
@@ -450,9 +470,29 @@ export const THEMES: Record<ThemeId, Theme> = {
 
 export const THEME_IDS = Object.keys(THEMES) as ThemeId[];
 
-/** Theme theo id; nếu có `font` (mã cặp phông) thì thay phông của theme bằng cặp đó. */
+const customThemes = new Map<string, Theme>();
+let customResolver: ((id: string) => Theme | undefined) | null = null;
+/** Đăng ký / cập nhật phong cách tuỳ chỉnh trong tiến trình (worker gọi khi lưu hoặc nạp từ storage). */
+export function registerCustomTheme(theme: Theme) {
+  if (isCustomThemeId(theme.id)) customThemes.set(theme.id, theme);
+}
+export function forgetCustomTheme(id: string) {
+  customThemes.delete(id);
+}
+/** Nơi nạp phong cách tuỳ chỉnh chưa có trong bộ nhớ (studio đọc từ storage). */
+export function setCustomThemeResolver(fn: ((id: string) => Theme | undefined) | null) {
+  customResolver = fn;
+}
+export function findCustomTheme(id: string): Theme | undefined {
+  if (!isCustomThemeId(id)) return undefined;
+  const hit = customThemes.get(id) ?? customResolver?.(id);
+  if (hit) customThemes.set(id, hit);
+  return hit;
+}
+
+/** Theme theo id (sẵn có hoặc tuỳ chỉnh); nếu có `font` (mã cặp phông) thì thay phông của theme bằng cặp đó. */
 export function getTheme(id: string, font?: string | null): Theme {
-  const base = THEMES[id as ThemeId] ?? THEMES["giay-ky-thuat"];
+  const base = THEMES[id as ThemeId] ?? findCustomTheme(id) ?? THEMES["giay-ky-thuat"];
   const pair = getFontPair(font);
   return pair ? { ...base, fonts: { display: pair.display, body: pair.body, bodyBold: pair.bodyBold } } : base;
 }

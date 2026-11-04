@@ -9,13 +9,14 @@ import { aiAvailable, drawIllustration } from "@cvs/ai";
 import { paths } from "@cvs/db";
 import { ASSET_ID_RE, illustrationStyleHints, makeAssetId, parseAssetId, rasterSize, sanitizeSvg, type AssetExt } from "@cvs/engine";
 import { getTheme } from "@cvs/themes";
+import type { ImageCredit } from "./stock";
 
 export const MAX_ASSET_BYTES = 10 * 1024 * 1024;
 const MAX_SIDE = 12_000;
 
 export class AssetError extends Error {}
 
-export type ProjectAsset = { id: string; url: string; w: number; h: number; ext: AssetExt; name: string; size: number; created: string };
+export type ProjectAsset = { id: string; url: string; w: number; h: number; ext: AssetExt; name: string; size: number; created: string; credit?: ImageCredit };
 
 export const assetUrl = (projectId: string, id: string) => `/api/projects/${encodeURIComponent(projectId)}/assets/${id}`;
 
@@ -30,18 +31,23 @@ function describe(projectId: string, id: string): ProjectAsset | null {
   const meta = parseAssetId(id);
   const f = assetFile(projectId, id);
   if (!meta || !f) return null;
-  let side: { name?: string; created?: string } = {};
+  let side: { name?: string; created?: string; credit?: ImageCredit } = {};
   try {
     side = JSON.parse(readFileSync(`${f}.json`, "utf8"));
   } catch {
     /* thiếu thông tin phụ */
   }
   const st = statSync(f);
-  return { id, url: assetUrl(projectId, id), w: meta.w, h: meta.h, ext: meta.ext, name: side.name || id, size: st.size, created: side.created ?? st.mtime.toISOString() };
+  return { id, url: assetUrl(projectId, id), w: meta.w, h: meta.h, ext: meta.ext, name: side.name || id, size: st.size, created: side.created ?? st.mtime.toISOString(), ...(side.credit ? { credit: side.credit } : {}) };
+}
+
+/** Ghi công của ảnh (ảnh từ kho miễn phí), null nếu ảnh tự tải lên. */
+export function assetCredit(projectId: string, id: string): ImageCredit | null {
+  return describe(projectId, id)?.credit ?? null;
 }
 
 /** Lưu ảnh tải lên. PNG/JPEG/WebP nhận theo chữ ký file; còn lại thử như SVG (lọc an toàn). Trùng nội dung → cùng mã. */
-export function saveAsset(projectId: string, name: string, data: Buffer): ProjectAsset {
+export function saveAsset(projectId: string, name: string, data: Buffer, credit?: ImageCredit): ProjectAsset {
   if (data.length === 0) throw new AssetError("File rỗng");
   if (data.length > MAX_ASSET_BYTES) throw new AssetError(`Ảnh quá lớn (${(data.length / 1048576).toFixed(1)} MB > 10 MB)`);
   let w: number, h: number, ext: AssetExt;
@@ -67,7 +73,8 @@ export function saveAsset(projectId: string, name: string, data: Buffer): Projec
   const f = join(dir, id);
   if (!existsSync(f)) writeFileAtomic(f, body);
   const clean = name.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 120) || id;
-  if (!existsSync(`${f}.json`)) writeJsonAtomic(`${f}.json`, { name: clean, created: new Date().toISOString() });
+  // ảnh từ kho miễn phí: luôn ghi (lại) ghi công kèm ảnh
+  if (!existsSync(`${f}.json`) || credit) writeJsonAtomic(`${f}.json`, { name: clean, created: new Date().toISOString(), ...(credit ? { credit } : {}) });
   return describe(projectId, id)!;
 }
 

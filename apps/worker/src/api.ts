@@ -21,21 +21,27 @@ import {
   claudeRunnerStatus, startClaudeRun, installClaudeCode, openClaudeLogin, claudeCodeSettings, setClaudeCodeSettings,
   applyDocPlan, docPlanView, saveDocPlan, saveScriptReply,
   applyOverlayDefaults,
+  deleteCustomTheme, deleteStyleVideo, ensureProjectTheme, listCustomThemes, listStyleVideos, loadBrief, previewKey, saveStyleVideo, saveThemeReply, saveThemeToLibrary,
+  setStyleBrief, StyleRefError, styleRefs, tweakCustomTheme, MAX_REF_VIDEO_BYTES,
 } from "@cvs/studio";
 import { overlayRoutes, overlayStale } from "./api-overlay";
+import { mediaRoutes } from "./api-media";
+import { claudeDesktopRoutes } from "./claude-desktop";
 import {
   CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, ensureZerottsRunning, installCit, installZerotts, restartCit, restartZerotts,
   ZEROTTS_REPO, ZEROTTS_VOICES, ZerottsClient, zerottsManagerState,
 } from "@cvs/tts";
-import { DEFAULT_FONT_PAIR, FONT_PAIRS, fontFaceUrlCss, fontFilePath, THEMES, THEME_IDS } from "@cvs/themes";
+import { DEFAULT_FONT_PAIR, FONT_PAIRS, fontFaceUrlCss, fontFilePath, isCustomThemeId, THEMES, THEME_IDS } from "@cvs/themes";
 import { TEMPLATES, ICON_NAMES, KINETIC_PRESETS } from "@cvs/engine";
-import { aiAvailable, aiBlockedReason } from "@cvs/ai";
+import { aiAvailable, aiBlockedReason, setApiAllowed } from "@cvs/ai";
 import { isLocalRequest, quitApp } from "./desktop";
 import { setupStatus, startSetup } from "./setup";
 import { APP_VERSION, checkForUpdate, installUpdate, saveUpdateSettings, updateStatus } from "./update";
 
 const app = new Hono().basePath("/api");
 overlayRoutes(app);
+mediaRoutes(app);
+claudeDesktopRoutes(app);
 
 app.onError((e, c) => c.json({ error: e.message }, 500));
 
@@ -107,7 +113,7 @@ app.get("/tts/status", async (c) => {
   }
   return c.json({ ...st, url: cit.baseUrl, mock: process.env.CVS_TTS_MOCK === "1", manager: citManagerState(), terms: CIT_TERMS_URL });
 });
-app.get("/claude/status", (c) => c.json({ ...claudeAuthStatus(), available: aiAvailable(), blocked: aiBlockedReason() }));
+app.get("/claude/status", (c) => c.json({ ...claudeAuthStatus(), available: aiAvailable(), blocked: aiBlockedReason(), useApi: claudeCodeSettings().useApi }));
 app.post("/claude/key", async (c) => {
   const { apiKey } = await c.req.json();
   saveClaudeKey(String(apiKey ?? ""));
@@ -200,8 +206,21 @@ app.get("/projects/:id", (c) => {
   if (!p) return c.json({ error: "Không tìm thấy dự án" }, 404);
   return c.json({ ...p, files: listFiles(p.id), warnings: crossLevelWarnings(p.id), out: paths.out(p.id) });
 });
+/** Phong cách được chọn phải có: sẵn có, hoặc tuỳ chỉnh của dự án / thư viện (chép vào dự án). Lỗi → thông báo, null = hợp lệ. */
+function styleError(pid: string, style: unknown): string | null {
+  if (style === undefined || THEME_IDS.includes(style as never)) return null;
+  if (!isCustomThemeId(style)) return `Phong cách "${String(style)}" không có`;
+  try {
+    ensureProjectTheme(pid, style);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
 app.patch("/projects/:id", async (c) => {
   const b = await c.req.json();
+  const bad = styleError(c.req.param("id"), b.settings?.style);
+  if (bad) return c.json({ error: bad }, 400);
   const p = updateProject(c.req.param("id"), b);
   if (b.applyToVideos) {
     for (const v of listVideos(p.id)) {
@@ -320,6 +339,83 @@ app.delete("/projects/:id/assets/:aid", (c) => {
   return c.json({ ok: true, usedBy });
 });
 
+// ---------- phong cách tuỳ chỉnh + tạo phong cách bằng AI ----------
+const styleGenJob = (id: string) => listJobs(id, 50).find((j) => j.kind === "style-gen") ?? null;
+app.get("/projects/:id/themes", (c) => {
+  const id = c.req.param("id");
+  if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  return c.json({ ...listCustomThemes(id), brief: loadBrief(id), videos: listStyleVideos(id), job: styleGenJob(id) });
+});
+// Đề bài (mô tả + ảnh + video mẫu + phong cách gốc); mode "api" → xếp job style-gen. Claude Code: giao diện gửi yêu cầu "style-gen" sau đó.
+app.post("/projects/:id/style-gen", async (c) => {
+  const id = c.req.param("id");
+  if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  const b = await c.req.json().catch(() => ({}));
+  try {
+    const brief = setStyleBrief(id, b);
+    if (b.mode !== "api") return c.json({ brief, job: null });
+    const active = styleGenJob(id);
+    const job = active && ["queued", "running"].includes(active.status) ? active : enqueueJob(id, "style-gen", null, {});
+    return c.json({ brief, job });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+});
+// Claude Code: tư liệu tham chiếu (đường dẫn tuyệt đối để mở bằng Read)
+app.get("/projects/:id/style-refs", async (c) => {
+  if (!getProject(c.req.param("id"))) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  try {
+    return c.json(await styleRefs(c.req.param("id")));
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+});
+// Video mẫu: gửi thô (body = nội dung file, tên trong x-file-name), ghi thẳng ra đĩa – không qua formData (≤ 200 MB)
+app.post("/projects/:id/style-refs/video", async (c) => {
+  const id = c.req.param("id");
+  if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  if (Number(c.req.header("content-length") ?? 0) > MAX_REF_VIDEO_BYTES) return c.json({ error: "Video quá lớn (tối đa 200 MB)" }, 413);
+  const body = c.req.raw.body;
+  if (!body) return c.json({ error: "Thiếu nội dung video" }, 400);
+  try {
+    return c.json(await saveStyleVideo(id, decodeURIComponent(c.req.header("x-file-name") ?? "video.mp4"), body as unknown as AsyncIterable<Uint8Array>));
+  } catch (e) {
+    if (e instanceof StyleRefError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+app.delete("/projects/:id/style-refs/video/:vid", (c) => (deleteStyleVideo(c.req.param("id"), c.req.param("vid")) ? c.json({ ok: true }) : c.json({ error: "Không có video" }, 404)));
+/** Dựng ảnh xem trước cho một phong cách trên cảnh đại diện (cùng bộ ảnh mẫu). */
+const queuePreview = (id: string, style: string) => enqueueJob(id, "theme-preview", previewKey(id), { styles: [style] });
+// Claude Code gửi phong cách (`pnpm cvs set-theme`) – kiểm như đường API, rồi tự dựng ảnh xem trước
+app.post("/projects/:id/themes", async (c) => {
+  const id = c.req.param("id");
+  if (!getProject(id)) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  const b = await c.req.json().catch(() => null);
+  const r = saveThemeReply(id, b, "claude-code");
+  if (!r.ok) return c.json({ ok: false, errors: r.errors }, 400);
+  return c.json({ ok: true, id: r.record!.id, name: r.record!.theme.name, adjustments: r.record!.adjustments, previewJob: queuePreview(id, r.record!.id).id });
+});
+// Chỉnh tay: {colors?: {accent: "#…"}, fontPair?, name?}
+app.patch("/projects/:id/themes/:tid", async (c) => {
+  const id = c.req.param("id");
+  const b = await c.req.json().catch(() => ({}));
+  const r = tweakCustomTheme(id, c.req.param("tid"), b ?? {});
+  if (!r.ok) return c.json({ ok: false, errors: r.errors, error: r.errors.join("; ") }, 400);
+  return c.json({ ok: true, record: r.record, previewJob: queuePreview(id, r.record!.id).id });
+});
+app.post("/projects/:id/themes/:tid/library", (c) => {
+  try {
+    return c.json({ ok: true, record: saveThemeToLibrary(c.req.param("id"), c.req.param("tid")) });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 404);
+  }
+});
+app.delete("/projects/:id/themes/:tid", (c) => {
+  const r = deleteCustomTheme(c.req.param("id"), c.req.param("tid"), c.req.query("from") === "library" ? "library" : "project");
+  return r.ok ? c.json(r) : c.json(r, 400);
+});
+
 app.get("/projects/:id/styles", (c) => {
   const id = c.req.param("id");
   const job = listJobs(id, 50).find((j) => j.kind === "theme-preview" && ["queued", "running"].includes(j.status)) ?? null;
@@ -398,6 +494,8 @@ app.put("/projects/:id/videos/:key", async (c) => {
   const id = c.req.param("id");
   const video = (await c.req.json()) as Video;
   if (video.key !== c.req.param("key")) return c.json({ error: "Mã video không khớp" }, 400);
+  const bad = styleError(id, video.style);
+  if (bad) return c.json({ error: bad }, 400);
   upsertVideo(id, video);
   setVideoFlags(id, video.key, { approved: false });
   return c.json({ ok: true });
@@ -523,7 +621,7 @@ app.post("/projects/:id/jobs", async (c) => {
   const keys = b.keys?.length ? b.keys : [null];
   const jobs = keys.map((k) => {
     const active = k ? activeJobFor(id, k) : null;
-    if (active && ["agent", "produce", "voice", "visual", "render", "design", "revise"].includes(b.kind)) return active;
+    if (active && ["agent", "produce", "voice", "visual", "render", "design", "revise", "remix"].includes(b.kind)) return active;
     // rà soát cách đọc: một lượt mỗi dự án
     const review = b.kind === "reading-review" ? listJobs(id, 50).find((j) => j.kind === "reading-review" && ["queued", "running"].includes(j.status)) : null;
     if (review) return review;
@@ -561,6 +659,7 @@ app.post("/claude-code/requests", async (c) => {
   if (b.kind === "analyze-doc" && !getFile(b.projectId, String(b.fileId ?? ""))) return c.json({ error: "Cần mã tài liệu (fileId) của dự án" }, 400);
   if (b.kind === "write-script" && !b.videoKey) return c.json({ error: "Cần mã video (videoKey)" }, 400);
   if (b.kind === "translate-subs" && !SUB_LANGS.some((l) => l.code !== "vi" && l.code === b.note)) return c.json({ error: "Cần mã ngôn ngữ đích trong note (en, ja, ko, zh, fr, de, es, th)" }, 400);
+  if (b.kind === "style-gen" && !loadBrief(b.projectId)) return c.json({ error: "Chưa có đề bài tạo phong cách (POST /projects/:id/style-gen)" }, 400);
   if (b.kind === "revise" && !String(b.note ?? "").trim()) return c.json({ error: "Cần nội dung yêu cầu sửa (note)" }, 400);
   if (b.note !== undefined && (typeof b.note !== "string" || b.note.length > 4000)) return c.json({ error: '"note" phải là chuỗi ≤ 4000 ký tự' }, 400);
   const req = addClaudeRequest({ projectId: b.projectId, videoKey: b.videoKey ?? null, sceneId: b.sceneId ?? null, fileId: b.kind === "analyze-doc" ? String(b.fileId) : null, kind: b.kind as ClaudeRequestKind, note: b.note?.trim() || null });
@@ -585,11 +684,14 @@ app.post("/claude-code/install", (c) => c.json(installClaudeCode()));
 app.post("/claude-code/login", (c) => c.json(openClaudeLogin()));
 app.post("/claude-code/settings", async (c) => {
   const b = await c.req.json().catch(() => ({}));
-  if (typeof b.auto !== "boolean") return c.json({ error: '"auto" phải là true | false' }, 400);
-  return c.json(setClaudeCodeSettings({ auto: b.auto }));
+  if (b.auto !== undefined && typeof b.auto !== "boolean") return c.json({ error: '"auto" phải là true | false' }, 400);
+  if (b.useApi !== undefined && typeof b.useApi !== "boolean") return c.json({ error: '"useApi" phải là true | false' }, 400);
+  const s = setClaudeCodeSettings({ auto: b.auto, useApi: b.useApi });
+  setApiAllowed(s.useApi);
+  return c.json(s);
 });
 // Prompt đúng như Claude API nhận – Claude Code làm theo prompt này. "analyze-doc" dùng fileId (mã tài liệu) thay videoKey.
-const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings", "analyze-doc", "write-script", "translate-subs"];
+const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings", "analyze-doc", "write-script", "translate-subs", "style-gen"];
 app.post("/claude-code/prompt", async (c) => {
   const b = await c.req.json().catch(() => ({}));
   if (!PROMPT_KINDS.includes(b.kind)) return c.json({ error: `"kind" phải là ${PROMPT_KINDS.join(" | ")}` }, 400);
@@ -640,7 +742,7 @@ app.post("/projects/:id/cleanup/delete", async (c) => {
 app.get("/projects/:id/cleanup/archive", (c) => c.json({ dir: paths.archive(c.req.param("id")), project: paths.project(c.req.param("id")), items: archiveSnapshots(c.req.param("id")) }));
 
 // ---------- tệp trong thư mục lưu trữ (video, ảnh, giọng) ----------
-const MIME: Record<string, string> = { ".mp4": "video/mp4", ".png": "image/png", ".mp3": "audio/mpeg", ".json": "application/json", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".html": "text/html; charset=utf-8" };
+const MIME: Record<string, string> = { ".mp4": "video/mp4", ".png": "image/png", ".jpg": "image/jpeg", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".json": "application/json", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".html": "text/html; charset=utf-8" };
 app.get("/files", (c) => {
   const p = resolve(c.req.query("path") ?? "");
   if (!(p === STORAGE || p.startsWith(STORAGE + sep)) || !existsSync(p) || statSync(p).isDirectory()) return c.json({ error: "Không có tệp" }, 404);

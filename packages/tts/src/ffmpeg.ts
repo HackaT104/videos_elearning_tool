@@ -116,7 +116,7 @@ export async function wavToMp3(wav: string, mp3: string): Promise<void> {
   await ffmpeg(["-i", wav, "-codec:a", "libmp3lame", "-b:a", "160k", mp3]);
 }
 
-export type ProbeInfo = { duration: number; streams: { codec_type: string; codec_name: string; width?: number; height?: number }[] };
+export type ProbeInfo = { duration: number; streams: { codec_type: string; codec_name: string; width?: number; height?: number; r_frame_rate?: string; avg_frame_rate?: string }[] };
 
 export async function probe(file: string): Promise<ProbeInfo> {
   const r = await run(FFPROBE, ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", file]);

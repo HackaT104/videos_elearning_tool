@@ -6,7 +6,7 @@
 import { ASSET_ID_RE, IMG_DIR, parseAssetId } from "../assets";
 import { iconSvg } from "../icons";
 import { dim, enter, fade, move, shift } from "../motion";
-import { blockHeight, fitSize, rich } from "../text";
+import { blockHeight, esc, fitSize, rich } from "../text";
 import { beatOf, box, header, SAFE, SpecBuilder, type Beat, type TemplateDef } from "./common";
 
 const beatSchema = { type: "object", properties: { cue: { type: "integer", minimum: 0 }, f: { type: "number", minimum: 0, maximum: 1 } }, required: ["cue"] };
@@ -22,6 +22,8 @@ export type ImageFocusParams = {
   fit?: "contain" | "cover";
   callouts?: ImageCallout[];
   zoom?: { x: number; y: number; scale?: number; at?: Beat };
+  /** Dòng ghi nguồn ảnh (ứng dụng tự điền khi giấy phép bắt buộc ghi tác giả – không phải tham số AI đặt). */
+  credit?: string;
 };
 
 const clamp = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
@@ -66,7 +68,8 @@ export const imageFocus: TemplateDef<ImageFocusParams> = {
     const ih0 = meta?.h ?? 1000;
     const fit = P.fit === "cover" ? "cover" : "contain";
     const y0 = P.title || P.kicker ? header(b, { kicker: P.kicker, title: P.title }) : SAFE.y0 + 24;
-    const area = { x: SAFE.x0, y: y0, w: SAFE.w, h: SAFE.y1 - 12 - y0 };
+    const credit = typeof P.credit === "string" ? P.credit.trim().slice(0, 160) : "";
+    const area = { x: SAFE.x0, y: y0, w: SAFE.w, h: SAFE.y1 - 12 - y0 - (credit ? 34 : 0) };
 
     // khung + vị trí ảnh trong khung (toạ độ khung)
     let W: number, H: number, ix: number, iy: number, iw: number, ih: number;
@@ -175,6 +178,12 @@ export const imageFocus: TemplateDef<ImageFocusParams> = {
         `</div>`,
     );
     b.anim(enter(ctx, frame, { t: 0.3 }, { rise: 30, scale: 0.97 }));
+    // ghi nguồn ảnh (CC BY / BY-SA): chữ nhỏ dưới khung ảnh, căn phải – không tính là chữ kịch bản
+    if (credit) {
+      const id = b.id("credit");
+      b.add(`<div id="${id}" class="abs credit-line t" style="right:${1920 - SAFE.x1}px;top:${SAFE.y1 - 30}px;max-width:1200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--font-body);font-size:22px;line-height:30px;color:var(--ink-soft);text-align:right;">${esc(credit)}</div>`);
+      b.anim(fade(ctx, id, { t: 0.8 }, 0.5));
+    }
     return b.done();
   },
 };

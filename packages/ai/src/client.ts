@@ -41,7 +41,20 @@ function hasProfile(): boolean {
 }
 
 /** Có thông tin đăng nhập Claude: khoá API, mã truy cập, hoặc hồ sơ đăng nhập tài khoản Anthropic (ant auth login). */
+/**
+ * Người dùng chọn có cho dùng Claude API hay không (worker đặt theo cài đặt; mặc định của ứng dụng là KHÔNG – dùng gói Claude
+ * qua Claude Code). Tắt thì mọi việc AI đi đường Claude Code, kể cả khi máy có khoá API / đăng nhập Console.
+ */
+let apiAllowed = true;
+export function setApiAllowed(v: boolean) {
+  apiAllowed = v;
+}
+export function apiIsAllowed() {
+  return apiAllowed;
+}
+
 export function aiAvailable(): boolean {
+  if (!apiAllowed) return false;
   if (aiBlockedReason()) return false;
   return !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || hasProfile());
 }

@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useAction, useApi } from "@/lib/hooks";
 import { Badge, Msg } from "@/components/ui";
 
-export type CcKind = "revise" | "design-video" | "illustration" | "custom-scene" | "fix-readings" | "review-readings" | "agent" | "analyze-doc" | "write-script" | "translate-subs";
+export type CcKind = "revise" | "design-video" | "illustration" | "custom-scene" | "fix-readings" | "review-readings" | "agent" | "analyze-doc" | "write-script" | "translate-subs" | "style-gen";
 type CcStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 type CcReq = { id: number; project_id: string; video_key: string | null; scene_id: string | null; file_id: string | null; kind: CcKind; note: string | null; status: CcStatus; message: string | null; created_at: string };
 type RunStart = { started: boolean; queued?: boolean; reason?: string } | null;
@@ -19,8 +19,8 @@ export type Runner = {
 export type CcInput = { pid: string; kind: CcKind; videoKey?: string; sceneId?: string; fileId?: string; note?: string };
 
 export const CC_PROMPT = "Xử lý các yêu cầu đang chờ của Course Video Studio";
-const KIND: Record<CcKind, string> = { revise: "Sửa cảnh", "design-video": "Thiết kế lại cảnh", illustration: "Vẽ minh hoạ", "custom-scene": "Cảnh tùy biến", "fix-readings": "Sửa cách đọc", "review-readings": "Rà soát cách đọc", agent: "Làm trọn video", "analyze-doc": "Phân tích tài liệu", "write-script": "Viết lại kịch bản", "translate-subs": "Dịch phụ đề" };
-const WHAT: Record<CcKind, string> = { revise: "sửa cảnh theo yêu cầu của bạn", "design-video": "thiết kế lại các cảnh", illustration: "vẽ hình minh hoạ", "custom-scene": "viết mã cảnh tùy biến", "fix-readings": "sửa cách đọc", "review-readings": "đọc mọi câu và đề xuất cách đọc", agent: "sửa cách đọc, thiết kế cảnh, soát hình rồi render", "analyze-doc": "đọc và phân tích tài liệu (phần nào cần video, kịch bản đủ chưa)", "write-script": "viết lại kịch bản theo nội dung bài", "translate-subs": "dịch phụ đề sang ngôn ngữ đã chọn (giữ đúng số và thuật ngữ)" };
+const KIND: Record<CcKind, string> = { revise: "Sửa cảnh", "design-video": "Thiết kế lại cảnh", illustration: "Vẽ minh hoạ", "custom-scene": "Cảnh tùy biến", "fix-readings": "Sửa cách đọc", "review-readings": "Rà soát cách đọc", agent: "Làm trọn video", "analyze-doc": "Phân tích tài liệu", "write-script": "Viết lại kịch bản", "translate-subs": "Dịch phụ đề", "style-gen": "Tạo phong cách" };
+const WHAT: Record<CcKind, string> = { revise: "sửa cảnh theo yêu cầu của bạn", "design-video": "thiết kế lại các cảnh", illustration: "vẽ hình minh hoạ", "custom-scene": "viết mã cảnh tùy biến", "fix-readings": "sửa cách đọc", "review-readings": "đọc mọi câu và đề xuất cách đọc", agent: "sửa cách đọc, thiết kế cảnh, soát hình rồi render", "analyze-doc": "đọc và phân tích tài liệu (phần nào cần video, kịch bản đủ chưa)", "write-script": "viết lại kịch bản theo nội dung bài", "translate-subs": "dịch phụ đề sang ngôn ngữ đã chọn (giữ đúng số và thuật ngữ)", "style-gen": "xem ảnh tham chiếu và tạo phong cách video mới" };
 const STATUS: Record<CcStatus, readonly [string, "amber" | "blue" | "green" | "red" | "slate"]> = { pending: ["Chờ Claude Code", "amber"], running: ["Claude Code đang làm…", "blue"], done: ["Xong", "green"], failed: ["Lỗi", "red"], cancelled: ["Đã huỷ", "slate"] };
 const ready = (r: Runner | null) => !!r?.installed && r.loggedIn !== false;
 const runMsg = (run: RunStart) => (run?.started ? "Claude Code đang làm trên máy này – trạng thái hiện bên dưới" : run?.queued ? "Đã thêm vào hàng đợi – Claude Code làm ngay sau việc đang chạy" : `Đã gửi vào hàng đợi${run?.reason ? ` (${run.reason})` : ""}`);
@@ -142,7 +142,7 @@ export function useClaudeCode(onDone?: (msg: string) => void) {
         ? `Việc này đã có trong hàng đợi (${STATUS[res.status][0].toLowerCase()}) – không tạo thêm`
         : res.merged
           ? "Đã gộp yêu cầu vào việc sửa cảnh đang chờ"
-          : run || res.run ? runMsg(res.run) : "Đã gửi vào hàng đợi – chạy Claude Code khi đã cài và đăng nhập (trang Claude AI)";
+          : run || res.run ? runMsg(res.run) : "Đã gửi vào hàng đợi – chạy bằng Claude Code hoặc Claude Desktop (trang Claude AI)";
       a.setMsg({ ok: true, text: m });
       onDone?.(m);
     });
@@ -170,14 +170,14 @@ export function useClaudeCode(onDone?: (msg: string) => void) {
           <span>Không hỏi lại (tự chạy Claude Code mỗi khi gửi việc – tắt ở trang Claude AI)</span>
         </label>
       )}
+      <p className="mt-3 text-[13px] text-soft">
+        Dùng <b className="font-medium text-ink">Claude Desktop</b> (gói Pro/Max) thay thế? Bấm <b className="font-medium text-ink">Chỉ gửi vào hàng đợi</b>, rồi trong Claude Desktop (đã kết nối ở <a className="text-brand underline" href="/claude">trang Claude AI</a>) gõ: «{CC_PROMPT}». Claude Desktop không tự chạy.
+      </p>
       <Msg msg={a.msg && !a.msg.ok ? a.msg : null} />
       <div className="mt-4 flex flex-wrap justify-end gap-2">
         <button type="button" className="btn" onClick={() => setReq(null)}>Huỷ</button>
-        {ok ? (
-          <button type="button" className="btn btn-primary" disabled={a.busy} onClick={() => send(req, true)}>Đồng ý, chạy ngay</button>
-        ) : (
-          <button type="button" className="btn" disabled={a.busy} onClick={() => send(req, false)}>Chỉ gửi vào hàng đợi</button>
-        )}
+        <button type="button" className="btn" disabled={a.busy} onClick={() => send(req, false)}>Chỉ gửi vào hàng đợi</button>
+        {ok && <button type="button" className="btn btn-primary" disabled={a.busy} onClick={() => send(req, true)}>Đồng ý, chạy ngay</button>}
       </div>
       {!ok && (
         <details className="mt-3 text-[13px]">
@@ -283,7 +283,7 @@ export function ClaudeCodeStatus({ pid, videoKey, sceneId, fileId, kinds, limit 
             <span className="flex flex-wrap items-center gap-1.5">
               <Badge tone={STATUS[r.status][1]}>{STATUS[r.status][0]}</Badge>
               <span className="font-medium">{KIND[r.kind] ?? r.kind}</span>
-              <span className="num text-soft">{[r.video_key ?? (r.file_id ? "cả tài liệu" : pid ? "mọi video" : r.project_id), r.scene_id].filter(Boolean).join(" · ")}</span>
+              <span className="num text-soft">{[r.video_key ?? (r.file_id ? "cả tài liệu" : r.kind === "style-gen" ? "cả dự án" : pid ? "mọi video" : r.project_id), r.scene_id].filter(Boolean).join(" · ")}</span>
               {extra.length > 0 && <span className="text-soft">(+{extra.length} lần bấm trùng)</span>}
               {(r.status === "pending" || extra.length > 0) && (
                 <button type="button" className="ml-auto min-h-8 px-1 text-[12px] text-soft underline" disabled={a.busy} onClick={() => cancel(r.status === "pending" ? g.filter((x) => x.status === "pending").map((x) => x.id) : extra.map((x) => x.id))}>

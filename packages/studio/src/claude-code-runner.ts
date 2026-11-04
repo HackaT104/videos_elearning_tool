@@ -112,13 +112,13 @@ function killTree(p: ChildProcess) {
 
 // ---------- cài đặt chung ----------
 
-export type ClaudeCodeSettings = { auto: boolean };
+export type ClaudeCodeSettings = { auto: boolean; useApi: boolean };
 export function claudeCodeSettings(): ClaudeCodeSettings {
   try {
     const j = JSON.parse(readFileSync(SETTINGS_FILE, "utf8"));
-    return { auto: j.claudeCodeAuto === true };
+    return { auto: j.claudeCodeAuto === true, useApi: j.useClaudeApi === true };
   } catch {
-    return { auto: false };
+    return { auto: false, useApi: false };
   }
 }
 export function setClaudeCodeSettings(s: Partial<ClaudeCodeSettings>): ClaudeCodeSettings {
@@ -129,6 +129,7 @@ export function setClaudeCodeSettings(s: Partial<ClaudeCodeSettings>): ClaudeCod
     /* chưa có */
   }
   if (typeof s.auto === "boolean") j.claudeCodeAuto = s.auto;
+  if (typeof s.useApi === "boolean") j.useClaudeApi = s.useApi;
   mkdirSync(dirname(SETTINGS_FILE), { recursive: true });
   writeFileSync(SETTINGS_FILE, JSON.stringify(j, null, 2));
   return claudeCodeSettings();

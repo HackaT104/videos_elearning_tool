@@ -6,6 +6,7 @@ import { waitJob } from "@/lib/jobs";
 import { useProject, type VideoSum } from "@/lib/project";
 import { CitLight } from "@/components/cit";
 import { ZerottsLight } from "@/components/zerotts";
+import { MusicSettings } from "@/components/music-settings";
 import { Badge, Msg, PageHead } from "@/components/ui";
 
 type Voice = { provider: string; id: string; name: string; gender: string | null; region: string | null; description: string | null; cloned: number | null };
@@ -171,6 +172,8 @@ export default function GiongCit() {
           })}
         </div>
       </div>
+
+      <MusicSettings pid={pid} />
 
       <div className="card mb-4">
         <h2 className="mb-2 font-semibold">Nhịp đọc theo cấp độ</h2>

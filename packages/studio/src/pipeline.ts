@@ -9,8 +9,10 @@ import { getProject, getVideo, glossaryFor, paths, setVideoFlags, setVideoQa, up
 import { autoDesign, qaTimes, type BuildInput, type PreviewResult, type RenderEngine } from "@cvs/engine";
 import { contactSheet, createHyperFramesEngine, launchBrowser, lintErrors, lintScene } from "@cvs/engine-hf";
 import { createRemotionEngine, lintRemotionScene } from "@cvs/engine-rmt";
-import { audioQa, contentQa, layoutItems, makeReport, type QaItem, type QaReport } from "@cvs/qa";
-import { fillIllustrations } from "./assets";
+import { audioQa, contentQa, layoutItems, makeReport, varietyQa, type QaItem, type QaReport } from "@cvs/qa";
+import { assetCredit, fillIllustrations } from "./assets";
+import { creditLine, needsAttribution } from "./stock";
+import { mixFinal, rawRender } from "./music";
 import { CitClient, ensureCitRunning, ensureZerottsRunning, loadManifest, mockGenerate, synthesizeVideo, ZerottsClient } from "@cvs/tts";
 
 export type StepName = "normalize" | "voice" | "timing" | "design" | "build" | "qa" | "render" | "final-qa";
@@ -53,13 +55,26 @@ export const videoOverlay = (projectId: string, video: Video) => resolveOverlay(
 function input(ctx: Pick<Ctx, "projectId">, video: Video, timing: Timing): BuildInput {
   const voDir = paths.vo(ctx.projectId, video.key);
   return {
-    video,
+    video: withImageCredits(ctx.projectId, video),
     timing,
     manifest: existsSync(join(voDir, "manifest.json")) ? loadManifest(voDir) : null,
     voDir,
     workDir: paths.work(ctx.projectId, video.key, video.engine),
     assetsDir: paths.assets(ctx.projectId),
     overlay: videoOverlay(ctx.projectId, video),
+  };
+}
+
+/** Cảnh image-focus dùng ảnh CC BY / BY-SA → tự thêm dòng ghi nguồn (params.credit) khi dựng; ảnh khác → bỏ. Không sửa video gốc. */
+export function withImageCredits(projectId: string, video: Video): Video {
+  return {
+    ...video,
+    scenes: video.scenes.map((s) => {
+      if (s.design?.template !== "image-focus") return s;
+      const c = typeof s.design.params.image === "string" ? assetCredit(projectId, s.design.params.image) : null;
+      const { credit: _old, ...params } = s.design.params;
+      return { ...s, design: { ...s.design, params: c && needsAttribution(c.license) ? { ...params, credit: creditLine(c) } : params } };
+    }),
   };
 }
 
@@ -228,7 +243,7 @@ export async function stepQa(ctx: Ctx): Promise<QaReport> {
   }
   items.push(...layoutItems(preview!.layout));
   for (const e of preview!.errors) items.push({ kind: "render", severity: "error", message: `Lỗi trang: ${e}` });
-  items.push(...contentQa(video));
+  items.push(...contentQa(video), ...varietyQa(video, timing));
   for (const w of build.warnings) items.push({ kind: "render", severity: /lint/.test(w) ? "error" : "warning", message: w });
   const sheet = join(framesDir, "sheet.png");
   const browser = await launchBrowser();
@@ -259,21 +274,50 @@ export async function stepRender(ctx: Ctx) {
     throw new Error("Chưa có giọng thật cho mọi cảnh – chạy bước Giọng trước khi render");
   }
   const out = paths.render(ctx.projectId, video.key);
+  const raw = rawRender(out);
   const inp = input(ctx, video, timing);
-  const r = await engine.render(inp, out, (p) => {
+  const r = await engine.render(inp, raw, (p) => {
     if (ctx.shouldStop()) throw new Stopped();
-    ctx.progress("render", p.pct, p.phase + (p.frame ? ` ${p.frame}/${p.total}` : ""));
+    ctx.progress("render", Math.min(95, p.pct), p.phase + (p.frame ? ` ${p.frame}/${p.total}` : ""));
   });
   ctx.log(`render: ${r.renderer} ${r.duration.toFixed(2)} s\n`);
-  // QA âm thanh/thời lượng
-  const row = getVideo(ctx.projectId, video.key)!;
-  const prev = (row.qa as QaReport | null) ?? makeReport(video.key, [], {});
-  const audio = await audioQa(out, timing);
-  const items = [...prev.items.filter((i) => i.kind !== "audio" && !(i.kind === "render" && /Thời lượng|H\.264/.test(i.message))), ...audio];
-  const report = makeReport(video.key, items, prev.assumptions, { sheet: prev.sheet, frames: prev.frames });
-  // overlayKey: phụ đề gắn cứng/logo lúc render – đổi cài đặt → bản render cũ (cần "Dựng lại hình")
-  setVideoQa(ctx.projectId, video.key, { ...report, renderer: r.renderer, rendered: out, renderedAt: new Date().toISOString(), overlayKey: overlayKey(inp.overlay!) });
+  await finishRender(ctx, video, timing, { renderer: r.renderer, overlayKey: overlayKey(inp.overlay!) });
   setVideoFlags(ctx.projectId, video.key, { status: "rendered", approved: false });
+  ctx.progress("render", 100);
+}
+
+/** Trộn tiếng cuối (giọng −16 LUFS + nhạc nền) từ bản dựng hình gốc rồi QA file MP4. */
+async function finishRender(ctx: Ctx, video: Video, timing: Timing, meta: { renderer?: string; overlayKey?: string }) {
+  const out = paths.render(ctx.projectId, video.key);
+  ctx.progress("render", 96, "Trộn tiếng (chuẩn hoá âm lượng, nhạc nền)");
+  const music = getProject(ctx.projectId)?.settings.music;
+  const mix = await mixFinal(ctx.projectId, rawRender(out), out, timing.total, music, ctx.log);
+  ctx.progress("render", 98, "Kiểm tra file video");
+  const row = getVideo(ctx.projectId, video.key)!;
+  const prev: QaReport & { renderer?: string; overlayKey?: string } = (row.qa as (QaReport & { renderer?: string; overlayKey?: string }) | null) ?? makeReport(video.key, [], {});
+  const audio = await audioQa(out, timing);
+  const items = [...prev.items.filter((i) => i.kind !== "audio" && !(i.kind === "render" && /Thời lượng|H\.264|Tốc độ khung|Màn hình đen|Hình đứng yên/.test(i.message))), ...audio];
+  const report = makeReport(video.key, items, prev.assumptions, { sheet: prev.sheet, frames: prev.frames });
+  // overlayKey: phụ đề gắn cứng/logo lúc render – đổi cài đặt → bản render cũ (cần "Dựng lại hình"); audioKey: nhạc/âm lượng → chỉ trộn lại tiếng
+  setVideoQa(ctx.projectId, video.key, {
+    ...report,
+    renderer: meta.renderer ?? prev.renderer,
+    rendered: out,
+    renderedAt: new Date().toISOString(),
+    overlayKey: meta.overlayKey ?? prev.overlayKey,
+    audioKey: mix.key,
+    voiceLufs: mix.voice?.I ?? null,
+  });
+}
+
+/** Chỉ trộn lại tiếng (đổi nhạc nền/mức nhạc): dùng bản dựng hình gốc nếu còn, không thì render đầy đủ. */
+export async function stepRemix(ctx: Ctx) {
+  const video = load(ctx);
+  const timing = currentTiming(ctx.projectId, video);
+  const raw = rawRender(paths.render(ctx.projectId, video.key));
+  if (!existsSync(raw) || timing.estimated) return stepRender(ctx);
+  ctx.progress("render", 0, "Trộn lại tiếng – không dựng lại hình");
+  await finishRender(ctx, video, timing, {});
   ctx.progress("render", 100);
 }
 
@@ -282,6 +326,7 @@ export const JOB_STEPS: Record<string, StepName[]> = {
   voice: ["normalize", "voice"],
   visual: ["design", "qa", "render"],
   render: ["qa", "render"],
+  remix: ["render"],
   design: ["design", "qa"],
 };
 

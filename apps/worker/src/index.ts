@@ -5,9 +5,10 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { claimNextJob, getDb, getJob, getProject, paths, requeueStale, STORAGE, updateJob, type Job } from "@cvs/db";
 import { startApi } from "./api";
+import { setApiAllowed } from "@cvs/ai";
 import { startAutoUpdateCheck } from "./update";
 import { ensureCitRunning, ensureZerottsRunning, installZerotts, startCitWatchdog, startZerottsWatchdog, stopCit, stopZerotts, zerottsInstalled } from "@cvs/tts";
-import { aiAnalyzeDoc, aiReviewReadings, aiTranslateSubs, assertStyleChosen, rewriteFromPlan, aiWriteScript, loadSavedClaudeKey, runAgent, JOB_STEPS, makeCustomScene, reviseWithNote, runSteps, Stopped, STEP_LABELS, stylePreview, voiceSamples, type Ctx, type StepName } from "@cvs/studio";
+import { aiAnalyzeDoc, aiReviewReadings, aiTranslateSubs, assertStyleChosen, rewriteFromPlan, aiWriteScript, loadSavedClaudeKey, runAgent, JOB_STEPS, makeCustomScene, reviseWithNote, runStyleGen, runSteps, stepRemix, Stopped, STEP_LABELS, stylePreview, voiceSamples, claudeCodeSettings, type Ctx, type StepName } from "@cvs/studio";
 
 const MAX = Number(process.env.CVS_WORKER_CONCURRENCY ?? 4);
 const MAX_RENDER = Number(process.env.CVS_RENDER_CONCURRENCY ?? 1);
@@ -89,6 +90,10 @@ async function run(job: Job) {
           await withRenderSlot(() => runSteps(ctx, ["render"], { ...(job.payload ?? {}), skipStyle: true }));
         }
         break;
+      case "remix":
+        updateJob(job.id, { message: "Trộn tiếng – chờ lượt" });
+        await withRenderSlot(() => stepRemix(ctx));
+        break;
       case "ai-script":
         if (job.payload.custom) await makeCustomScene(ctx, job.payload.scene);
         else if (job.payload.planKey) result = await rewriteFromPlan(job.project_id, job.payload.planKey);
@@ -98,7 +103,13 @@ async function run(job: Job) {
         result = await aiAnalyzeDoc(job.project_id, job.payload.fileId, (pct, message) => updateJob(job.id, { step: "analyze", progress: pct, message }));
         break;
       case "theme-preview":
-        result = await stylePreview(job.project_id, job.video_key, job.payload?.scene);
+        {
+          const styles = Array.isArray(job.payload?.styles) ? job.payload.styles.filter((x: unknown) => typeof x === "string") : undefined;
+          result = await stylePreview(job.project_id, job.video_key, job.payload?.scene, styles?.length ? styles : undefined);
+        }
+        break;
+      case "style-gen":
+        result = await runStyleGen(job.project_id, (pct, message) => updateJob(job.id, { step: "style", progress: pct, message }));
         break;
       case "reading-review":
         result = await aiReviewReadings(ctx, job.video_key);
@@ -126,6 +137,8 @@ async function run(job: Job) {
 async function loop() {
   getDb();
   loadSavedClaudeKey();
+  // mặc định KHÔNG dùng Claude API (tính phí); chỉ bật khi người dùng chọn ở trang Claude AI
+  setApiAllowed(claudeCodeSettings().useApi);
   requeueStale();
   console.log(`Worker sẵn sàng · ${MAX} job song song · render ${MAX_RENDER} · lưu trữ: ${STORAGE}`);
   for (;;) {

@@ -41,3 +41,12 @@ SOFTWARE.
 
 - Nguồn: https://github.com/Cuongyd196/cit-voice-studio – dùng CIT là đồng ý Điều khoản sử dụng:
   https://github.com/Cuongyd196/cit-voice-studio/blob/main/DIEU-KHOAN.md
+
+## Nhạc nền và ảnh miễn phí (nội dung của người dùng)
+
+Ứng dụng **không kèm** nhạc hay ảnh nào; người dùng tự chọn và chịu trách nhiệm về quyền dùng.
+
+- **Nhạc nền:** chỉ dùng nhạc bạn có quyền dùng thương mại (nhạc tự sở hữu, CC0, CC BY – nhớ ghi tác giả, hoặc thư viện có giấy phép rõ ràng như YouTube Audio Library / Pixabay Content License – đọc điều khoản của từng nơi). Ghi giấy phép vào ô *Giấy phép / nguồn nhạc*; nội dung này được đưa vào `DANH_MUC_VIDEO.txt` khi xuất.
+- **Openverse** (https://openverse.org, API `api.openverse.org`) và **Wikimedia Commons** (https://commons.wikimedia.org, API `w/api.php`): ứng dụng chỉ hiện ảnh CC0, Public Domain Mark, CC BY, CC BY-SA. CC BY/BY-SA **bắt buộc ghi tác giả, tiêu đề, nguồn và giấy phép** – ứng dụng tự ghi trên cảnh và trong `credits.txt`; CC BY-SA còn yêu cầu bản phái sinh **của ảnh** (ảnh đã chỉnh sửa) dùng cùng giấy phép. Siêu dữ liệu giấy phép do nguồn cung cấp – hãy mở liên kết "nguồn" để kiểm tra trước khi dùng cho sản phẩm thương mại; ảnh có người/nhãn hiệu có thể cần thêm quyền chân dung/nhãn hiệu.
+- **Pexels** (https://www.pexels.com/license/): cần khoá API miễn phí của người dùng; ảnh dùng thương mại được, không bắt buộc ghi công nhưng điều khoản API yêu cầu ghi nguồn Pexels và tác giả khi hiển thị – ứng dụng ghi trong `credits.txt`. Giới hạn mặc định của Pexels: 200 yêu cầu/giờ.
+- Ứng dụng gọi các API trên với User-Agent `CourseVideoStudio/<phiên bản>` (không kèm thông tin cá nhân), tuần tự và cách nhau ≥ 1,1 s mỗi máy chủ.

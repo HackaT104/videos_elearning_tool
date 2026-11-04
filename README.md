@@ -133,6 +133,27 @@ và dán `Xử lý các yêu cầu đang chờ của Course Video Studio` (trang
 Claude Code điều khiển ứng dụng bằng `pnpm cvs <lệnh>` (gõ `pnpm cvs help` để xem; worker phải đang chạy, địa chỉ đổi bằng `CVS_API`).
 Có thể nhờ trực tiếp, ví dụ "đổi cảnh s2 của video CAR-L1_MO2_U2.2_1 sang so sánh hai cột". Trang **Claude AI** giải thích hai cách.
 
+## 2c. Dùng Claude Desktop (gói Pro/Max) qua MCP
+
+Không muốn dùng Claude Code? Ứng dụng chat **Claude Desktop** (claude.ai/download, gói Pro/Max) làm được cùng các việc qua máy chủ MCP
+cục bộ `course-video-studio` (`apps/mcp`, chạy trên máy này, gọi API worker ở `CVS_API` – mặc định `http://127.0.0.1:3001/api`):
+
+1. Trang **Claude AI** → thẻ *Claude Desktop (gói Claude Pro/Max)* → **Kết nối Claude Desktop**. Ứng dụng sao lưu rồi gộp mục
+   `mcpServers["course-video-studio"]` vào `claude_desktop_config.json` (Windows `%APPDATA%\Claude\`, bản Microsoft Store thêm
+   `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`; macOS `~/Library/Application Support/Claude/`), giữ nguyên các máy chủ khác.
+   Lệnh: node đang chạy ứng dụng (bản cài: `node\node.exe` đi kèm) + `apps/mcp/dist/cvs-mcp.mjs` (dựng một tệp bằng esbuild khi đóng gói;
+   chưa dựng thì chạy mã nguồn qua tsx). **Gỡ kết nối** bỏ đúng mục đó. Chỉ bấm được ngay trên máy chạy ứng dụng.
+2. Thoát hẳn Claude Desktop rồi mở lại, bật công cụ **course-video-studio**, gõ: `Xử lý các yêu cầu đang chờ của Course Video Studio`
+   (hoặc chọn mẫu lệnh *xu-ly-yeu-cau-dang-cho*). Ở hộp xác nhận "Gửi cho Claude Code" bấm **Chỉ gửi vào hàng đợi** – Claude Desktop không tự chạy.
+3. Công cụ (giống `pnpm cvs`, dùng chung `scripts/lib/cvs-api.ts`): `list_projects`, `list_videos`, `get_video`, `list_templates`, `list_readings`, `list_files`,
+   `list_pending_requests`, `get_prompt` (đúng prompt của đường API), `get_style_refs` (ảnh), `set_scene_design`, `set_svg`, `set_custom_scene`,
+   `set_reading`, `suggest_reading`, `set_subs`, `set_theme`, `set_doc_plan`, `set_script`, `check_video` (dựng + QA, trả **ảnh khung** JPEG ≤ 1280 px để
+   Claude tự nhìn), `render_video`, `job_status`, `mark_request_done` / `mark_request_failed`. Tài nguyên `cvs://skills/…` là hai kỹ năng
+   `cvs-claude-code` và `cvs-scene-design`. Mỗi lần gọi chờ job tối đa 50 s; lâu hơn thì Claude gọi `job_status` lại.
+
+Ứng dụng phải đang mở khi dùng. Chạy thử bằng tay: `pnpm --filter @cvs/mcp build` rồi `node apps/mcp/dist/cvs-mcp.mjs` (giao thức qua stdin/stdout).
+Chưa làm gói `.mcpb` (Desktop Extension): nút Kết nối đã đủ và gói đó phải mang theo `sharp` native cho từng hệ điều hành.
+
 ## 3. Kiến trúc
 
 ```
@@ -186,9 +207,16 @@ Vì vậy cùng tham số cho cùng hình ở cả hai bộ dựng (đo được
 - **Đọc:** máy chủ gọi `normalize_vi_text` (số, ngày tháng, viết tắt → chữ) và `chunk_text(normalize_punctuation(…))` trước khi đọc. Mốc câu đi qua đúng đường gán mốc/cắt im lặng/giãn nhịp như CIT. **ZeroTTS không có tham số tốc độ**: ứng dụng đổi tốc độ bằng ffmpeg `atempo` (giữ cao độ) và co mốc tương ứng. Độ biểu cảm (temperature) → `audio_temperature`; seed → cố định ngẫu nhiên. Thẻ CIT: `[nghỉ 2s]`/`[nghỉ 500ms]` → chèn khoảng lặng (tối đa 2,4 s), thẻ biểu cảm (`[cười]`…) bị bỏ.
 - **Sự cố:** xem `vendor/zerotts/server.log`; bấm "Khởi động lại" trên trang Giọng đọc; cài lại = xoá `vendor/zerotts` rồi bấm Cài. Giấy phép: xem `THIRD-PARTY.md`.
 
+### Âm lượng, nhạc nền, ảnh miễn phí
+
+- **Âm lượng:** sau khi render (HyperFrames CLI, render dự phòng hay Remotion), bản dựng gốc được giữ ở `render/.raw/<mã>.mp4` và tiếng được trộn lại bằng ffmpeg (hình giữ nguyên, `-c:v copy`): giọng đo bằng `loudnorm` rồi chuẩn hoá tuyến tính về **−16 LUFS / −1,5 dBTP** (lượt 2 dùng số đo lượt 1).
+- **Nhạc nền (tuỳ chọn, bước Giọng đọc → "Nhạc nền và âm lượng"):** MP3/WAV tải lên dự án (`projects/<mã>/music/`) hoặc chép vào thư viện chung `storage/am-nhac/` (nút *Mở thư mục nhạc*). Nhạc được lặp/cắt đúng thời lượng, đặt dưới giọng theo LU (mặc định −20), hiện/tắt dần 1 s, **tự hạ khi có giọng** (`sidechaincompress`), `alimiter` −2 dBFS. Đổi nhạc/mức → nút *Trộn lại tiếng* chỉ trộn lại từ bản dựng gốc (vài giây, không dựng lại hình); khoá `audioKey` trong báo cáo QA cho biết bản nào cũ. Ghi giấy phép nhạc vào ô *Giấy phép / nguồn nhạc* – nó được ghi vào `DANH_MUC_VIDEO.txt` khi xuất.
+- **Ảnh miễn phí (Kịch bản → Ảnh của cảnh → *Tìm ảnh miễn phí*):** tìm Openverse và Wikimedia Commons (không cần khoá) và Pexels (khi nhập khoá miễn phí ở **Cài đặt**). Chỉ hiện giấy phép dùng thương mại được: CC0, PDM, CC BY, CC BY-SA (nhãn "chia sẻ tương tự"), giấy phép Pexels. Khi nhập, máy chủ hỏi lại nguồn theo mã ảnh và lưu `{source, creator, license, licenseUrl, url, title}` kèm ảnh. Cảnh image-focus dùng ảnh CC BY/BY-SA tự hiện dòng "Ảnh: tác giả · giấy phép · nguồn"; khi xuất có `<mã>.credits.txt` cạnh mỗi video và mục "Nguồn ảnh và nhạc" trong `DANH_MUC_VIDEO.txt`. Gọi API với User-Agent `CourseVideoStudio/<phiên bản>`, cách nhau ≥ 1,1 s mỗi máy chủ, lưu đệm kết quả 10 phút.
+- **Đa dạng cảnh:** trước khi sản xuất (bước 7) và trong QA, `varietyQa` cảnh báo khi một template > 40 % số cảnh, hai cảnh liền nhau cùng template, > 50 % cảnh chỉ có chữ, cảnh ≥ 20 s có < 4 phần tử chuyển động. Prompt chọn template có cùng quy tắc; AI ghi nhật ký "Vì sao AI chọn" (template cân nhắc, lý do, độ tự tin) hiện ở bước Duyệt.
+
 ### QA tự động (chặn xuất nếu không đạt)
 
-Chụp khung tại mỗi mốc câu + 1,5 s và `dur − 0,6` của mọi cảnh; đo DOM (tràn vùng an toàn x 96–1824/y 54–1026, chữ chồng nhau, chữ < 28 px, chữ tràn thẻ, thẻ thiếu `box-sizing`); Claude soát ảnh theo checklist và tự sửa tối đa 2 vòng; âm thanh có AAC, `silencedetect −45 dB d=2.5` không có đoạn nào, thời lượng khớp timing ±0,2 s; mọi con số trên màn hình phải có trong văn bản nguồn; thuật ngữ bắt buộc (verification = **thẩm tra**, validation = **thẩm định**, "TUV NORD").
+Chụp khung tại mỗi mốc câu + 1,5 s và `dur − 0,6` của mọi cảnh; đo DOM (tràn vùng an toàn x 96–1824/y 54–1026, chữ chồng nhau, chữ < 28 px, chữ tràn thẻ, thẻ thiếu `box-sizing`); Claude soát ảnh theo checklist và tự sửa tối đa 2 vòng; file MP4 sau render: H.264 1920×1080 30 fps + AAC, `silencedetect −45 dB d=2.5` không có đoạn nào, thời lượng khớp timing ±0,15 s, `blackdetect` (đen > 0,5 s) và `freezedetect` (đứng hình lâu hơn khoảng giữa hai mốc câu dài nhất của cảnh, tối thiểu 3 s) chỉ cảnh báo, `ebur128` −16 ±1,5 LUFS và đỉnh thật ≤ −1 dBTP (cảnh báo), chạm 0 dBFS = lỗi méo; mọi con số trên màn hình phải có trong văn bản nguồn; thuật ngữ bắt buộc (verification = **thẩm tra**, validation = **thẩm định**, "TUV NORD").
 
 ---
 

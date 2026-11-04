@@ -5,15 +5,18 @@ import { useAction, useApi } from "@/lib/hooks";
 import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead } from "@/components/ui";
 import { OverlaySettings } from "@/components/overlay-settings";
+import { StyleGen, type CustomRec, type CustomThemes } from "@/components/style-gen";
 
-type Theme = { id: string; name: string; description: string; dark: boolean; colors: Record<string, string>; fonts: { display: string; body: string; displayWeight: number } };
+type Theme = { id: string; name: string; description: string; dark: boolean; colors: Record<string, string>; fonts: { display: string; body: string; displayWeight: number }; custom?: "project" | "library" };
+const fromCustom = (r: CustomRec, custom: "project" | "library"): Theme => ({ id: r.id, name: r.theme.name, description: r.theme.description, dark: r.theme.dark, colors: r.theme.colors, fonts: { display: r.theme.fonts.display.family, body: r.theme.fonts.body.family, displayWeight: r.theme.fonts.display.weight }, custom });
 type FontPair = { id: string; name: string; description: string; display: string; body: string; displayWeight: number; generic: string };
 type Styles = { previews: { key: string; styles: { style: string; file: string }[] } | null; job: { id: number; status: string; progress: number; message: string | null } | null };
 
 export default function PhongCach() {
   const { project, reload } = useProject();
   const pid = project!.id;
-  const meta = useApi<{ themes: Theme[]; fonts: FontPair[] }>("/meta");
+  const meta = useApi<{ themes: Theme[]; fonts: FontPair[]; ai: boolean }>("/meta");
+  const custom = useApi<CustomThemes>(`/projects/${pid}/themes`, 4000);
   const vids = useApi<VideoSum[]>(`/projects/${pid}/videos`, 5000);
   const styles = useApi<Styles>(`/projects/${pid}/styles`, 3000);
   const [sample, setSample] = useState<string>("");
@@ -31,19 +34,31 @@ export default function PhongCach() {
   const shots = styles.data?.previews;
   const busy = !!styles.data?.job;
   const stamp = shots ? shots.styles.length : 0;
-  const nThemes = meta.data?.themes.length;
+  // phong cách sẵn có + tuỳ chỉnh của dự án + thư viện chung (chưa có trong dự án)
+  const themes: Theme[] | undefined = meta.data ? [...(custom.data?.project.map((r) => fromCustom(r, "project")) ?? []), ...meta.data.themes, ...(custom.data?.library.map((r) => fromCustom(r, "library")) ?? [])] : undefined;
+  const themeName = (id: string) => themes?.find((t) => t.id === id)?.name ?? id;
+  const nThemes = themes?.length;
 
   const regenerate = () =>
     a.run(async () => {
       await api(`/projects/${pid}/jobs`, { method: "POST", json: { kind: "theme-preview", keys: [sample || vids.data?.[0]?.key || null] } });
       styles.reload();
     }, "Đang dựng lại các mẫu từ video đã chọn…");
-  const confirm = () =>
+  const apply = (style: string | null) =>
     a.run(async () => {
-      await api(`/projects/${pid}`, { method: "PATCH", json: { settings: { style: picked, styleConfirmed: true }, applyToVideos: true } });
+      await api(`/projects/${pid}`, { method: "PATCH", json: { settings: { style, styleConfirmed: true }, applyToVideos: true } });
+      setPicked(style);
       reload();
       vids.reload();
+      custom.reload();
     }, "Đã chọn phong cách cho cả dự án – có thể sang bước Giọng đọc CIT");
+  const confirm = () => apply(picked);
+  const remove = (t: Theme) =>
+    a.run(async () => {
+      if (!confirm_(`Xoá phong cách "${t.name}"${t.custom === "library" ? " khỏi thư viện chung" : " khỏi dự án"}?`)) return;
+      await api(`/projects/${pid}/themes/${t.id}${t.custom === "library" ? "?from=library" : ""}`, { method: "DELETE" });
+      custom.reload();
+    }, "Đã xoá phong cách");
   const setProject = (settings: Record<string, string>) => a.run(async () => { await api(`/projects/${pid}`, { method: "PATCH", json: { settings, applyToVideos: true } }); reload(); vids.reload(); }, "Đã áp dụng cho cả dự án");
   const setVideo = (key: string, patch: Record<string, string>) =>
     a.run(async () => {
@@ -63,9 +78,11 @@ export default function PhongCach() {
   return (
     <div>
       <PageHead step={5} title="Chọn phong cách video">
-        {s.styleConfirmed ? <Badge tone="green">Đã chọn: {meta.data?.themes.find((t) => t.id === s.style)?.name}</Badge> : <Badge tone="amber">Chưa chọn, bắt buộc trước khi sản xuất</Badge>}
+        {s.styleConfirmed ? <Badge tone="green">Đã chọn: {themeName(s.style)}</Badge> : <Badge tone="amber">Chưa chọn, bắt buộc trước khi sản xuất</Badge>}
       </PageHead>
       <Msg msg={a.msg} />
+      <StyleGen pid={pid} ai={!!meta.data?.ai} data={custom.data} reload={custom.reload} shots={shots?.styles ?? []} previewBusy={busy} fonts={meta.data?.fonts ?? []} themeName={themeName}
+        applied={s.styleConfirmed ? s.style : null} onApply={(id) => apply(id)} />
       <div className="card mb-4">
         <p className="mb-3 text-sm text-soft">
           {nThemes ? `${nThemes} mẫu` : "Các mẫu"} dưới đây được dựng từ <b>chính một cảnh trong video của bạn</b>, cùng nội dung, chỉ khác phong cách. Bấm vào mẫu để phóng to, chọn một mẫu rồi bấm
@@ -81,7 +98,7 @@ export default function PhongCach() {
           {busy && <span className="text-xs text-soft">{styles.data?.job?.status === "queued" ? "Đang chờ lượt…" : "Đang dựng… (khoảng 2 phút)"}</span>}
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {meta.data?.themes.map((t) => {
+          {themes?.map((t) => {
             const shot = shots?.styles.find((x) => x.style === t.id);
             const sel = picked === t.id;
             return (
@@ -99,8 +116,9 @@ export default function PhongCach() {
                 </button>
                 <div className="mt-2 flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5 font-semibold">{t.name} {s.styleConfirmed && s.style === t.id && <Badge tone="green">đang dùng</Badge>}</div>
+                    <div className="flex flex-wrap items-center gap-1.5 font-semibold">{t.name} {t.custom && <Badge tone="blue">{t.custom === "library" ? "Thư viện" : "Tuỳ chỉnh"}</Badge>} {s.styleConfirmed && s.style === t.id && <Badge tone="green">đang dùng</Badge>}</div>
                     <div className="text-[12px] leading-snug text-soft">{t.description}</div>
+                    {t.custom && !(s.style === t.id) && <button type="button" className="mt-1 min-h-8 text-[12px] text-danger underline" disabled={a.busy} onClick={() => remove(t)} aria-label={`Xoá phong cách ${t.name}`}>Xoá</button>}
                   </div>
                   <button className={`btn shrink-0 ${sel ? "btn-primary" : ""}`} aria-pressed={sel} onClick={() => setPicked(t.id)}>{sel ? "Đã chọn" : "Chọn"}</button>
                 </div>
@@ -121,9 +139,9 @@ export default function PhongCach() {
         </div>
       )}
 
-      <FontPicker themes={meta.data?.themes} fonts={meta.data?.fonts} styleId={picked ?? s.style} current={s.font ?? "theo-phong-cach"} busy={a.busy} onPick={(font) => setProject({ font })} />
+      <FontPicker themes={themes} fonts={meta.data?.fonts} styleId={picked ?? s.style} current={s.font ?? "theo-phong-cach"} busy={a.busy} onPick={(font) => setProject({ font })} />
 
-      <OverlaySettings pid={pid} theme={meta.data?.themes.find((t) => t.id === s.style)} bodyFont={meta.data?.fonts.find((f) => f.id === s.font)?.body} frame={shots?.styles.find((x) => x.style === s.style)?.file ?? null} />
+      <OverlaySettings pid={pid} theme={themes?.find((t) => t.id === s.style)} bodyFont={meta.data?.fonts.find((f) => f.id === s.font)?.body} frame={shots?.styles.find((x) => x.style === s.style)?.file ?? null} />
 
       <div className="card mb-4">
         <h2 className="mb-2 text-base font-semibold">Bộ dựng cho cả dự án</h2>
@@ -145,7 +163,7 @@ export default function PhongCach() {
             {vids.data?.filter((v) => v.include && !v.existing).map((v) => (
               <tr key={v.key}>
                 <td className="num text-[13px] font-medium">{v.key}</td>
-                <td><select className="input" value={v.style} onChange={(e) => setVideo(v.key, { style: e.target.value })}>{meta.data?.themes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
+                <td><select className="input" value={v.style} onChange={(e) => setVideo(v.key, { style: e.target.value })}>{themes?.map((t) => <option key={t.id} value={t.id}>{t.custom ? `${t.name} (tuỳ chỉnh)` : t.name}</option>)}</select></td>
                 <td><select className="input" value={v.font ?? "theo-phong-cach"} onChange={(e) => setVideo(v.key, { font: e.target.value === "theo-phong-cach" ? (undefined as unknown as string) : e.target.value })}><option value="theo-phong-cach">Theo phong cách</option>{meta.data?.fonts.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></td>
                 <td><select className="input" value={v.engine} onChange={(e) => setVideo(v.key, { engine: e.target.value })}><option value="hyperframes">HyperFrames</option><option value="remotion">Remotion</option></select></td>
                 <td><button className="btn" disabled={!v.rendered || a.busy} onClick={() => rerender(v)}>Dựng lại bằng bộ kia</button></td>
@@ -157,6 +175,8 @@ export default function PhongCach() {
     </div>
   );
 }
+
+const confirm_ = (q: string) => window.confirm(q);
 
 const SAMPLE_TITLE = "Thẩm định tín chỉ carbon";
 const SAMPLE_BODY = "Mỗi tấn CO₂ giảm được ghi nhận sau kỳ giám sát ngày 01/01/2027.";

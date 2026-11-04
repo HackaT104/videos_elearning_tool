@@ -40,7 +40,7 @@ export const LAYOUT_PROBE_JS = String.raw`
     const boxes = texts.map((el) => ({ el, r: textRect(el) }));
     for (const { el, r } of boxes) {
       const id = el.id || (el.closest("[id]") || {}).id || "?";
-      const src = el.classList.contains("src-line");
+      const src = el.classList.contains("src-line") || el.classList.contains("credit-line");
       const cam = el.closest("[data-cam-from]");
       const fs = parseFloat(getComputedStyle(el).fontSize) * (cam ? Math.min(1, Number(cam.getAttribute("data-cam-from")) || 1) : 1);
       if (fs < (src ? 22 : 27.5)) issues.push({ kind: "small-text", id, detail: "Chữ " + fs.toFixed(1) + "px" });
