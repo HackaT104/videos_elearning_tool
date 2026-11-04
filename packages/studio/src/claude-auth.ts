@@ -5,7 +5,7 @@
 // Lưu ý: đây là tài khoản API của Anthropic (tính phí theo lượng dùng), không phải gói Claude Pro/Max trên claude.ai.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -147,6 +147,27 @@ export async function startClaudeLogin(): Promise<void> {
   // khoá cũ trong môi trường sẽ "che" hồ sơ đăng nhập – bỏ khi chạy lệnh đăng nhập
   delete env.ANTHROPIC_API_KEY;
   delete env.ANTHROPIC_AUTH_TOKEN;
+  if (process.platform === "win32") {
+    // ant đọc mã xác thực trực tiếp từ bàn phím (console) – không nhận qua ống dẫn → mở một cửa sổ lệnh thật để người dùng dán mã vào đó
+    const before = profiles().length;
+    spawn("cmd.exe", ["/d", "/c", "start", '"Dang nhap Anthropic"', "cmd", "/k", `"${ant}" auth login`], { env, detached: true, stdio: "ignore", windowsVerbatimArguments: true }).on("error", () => undefined).unref();
+    login.message = "Đã mở cửa sổ đăng nhập: đăng nhập trên trình duyệt, bấm Copy code rồi dán vào cửa sổ đen đó và nhấn Enter.";
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      if (profiles().length > before || (before > 0 && Date.now() - t0 > 5000 && hasFreshProfile(t0))) {
+        clearInterval(timer);
+        login.running = false;
+        login.message = "Đã đăng nhập tài khoản Anthropic";
+        if (process.env.CVS_CLAUDE_KEY_SAVED === "1") clearSavedClaudeKey();
+        resetClaudeClient();
+      } else if (Date.now() - t0 > 15 * 60_000) {
+        clearInterval(timer);
+        login.running = false;
+        login.message = "Hết thời gian chờ đăng nhập – thử lại";
+      }
+    }, 2000);
+    return;
+  }
   const p = spawn(ant, ["auth", "login"], { env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
   login.proc = p;
   const onData = (d: Buffer) => {
@@ -197,4 +218,14 @@ export function submitClaudeLoginCode(code: string): { ok: boolean; message: str
   login.proc.stdin.write(`${c}\n`);
   login.message = "Đã gửi mã, đang hoàn tất đăng nhập…";
   return { ok: true, message: login.message };
+}
+
+/** Có hồ sơ đăng nhập được ghi sau thời điểm t0 (đăng nhập lại khi đã có hồ sơ cũ). */
+function hasFreshProfile(t0: number): boolean {
+  try {
+    const dir = join(configDir(), "credentials");
+    return readdirSync(dir).some((f) => f.endsWith(".json") && statSync(join(dir, f)).mtimeMs > t0);
+  } catch {
+    return false;
+  }
 }

@@ -51,7 +51,7 @@ export default function ClaudePage() {
         <p className="mb-3 text-sm text-soft">Ứng dụng tự cài công cụ đăng nhập chính thức của Anthropic, rồi mở trang đăng nhập trong trình duyệt của <b>máy tính đang chạy ứng dụng</b>. Đăng nhập xong không cần chép khoá. Dùng tài khoản Anthropic Console (API, tính phí theo lượng dùng). Gói Claude Pro/Max trên claude.ai không đăng nhập ở đây được: dùng gói qua Claude Code (xem trên).</p>
         <button className="btn btn-primary" disabled={a.busy || data?.login.running} onClick={() => a.run(async () => { await api("/claude/login", { method: "POST" }); reload(); })}>{data?.login.running ? "Đang chờ đăng nhập…" : "Đăng nhập tài khoản Anthropic"}</button>
         {data?.login.message && <div className="mt-2 text-sm">{data.login.message}</div>}
-        {data?.login.running && (
+        {data?.login.running && !/cửa sổ/.test(data.login.message) && (
           <div className="mt-3 rounded-lg bg-paper p-3">
             <label className="label" htmlFor="ant-code">Trang đăng nhập hiện "Authentication code"? Bấm Copy code ở đó rồi dán vào đây:</label>
             <div className="flex flex-wrap gap-2">
