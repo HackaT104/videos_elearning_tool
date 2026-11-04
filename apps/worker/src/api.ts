@@ -16,7 +16,7 @@ import {
 } from "@cvs/db";
 import {
   AssetError, assetFile, deleteAsset, listAssets, MAX_ASSET_BYTES, saveAsset,
-  applySceneEdit, claudeCodePrompt, archiveItems, archiveSnapshots, deleteItems, claudeAuthStatus, claudeLogout, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
+  applySceneEdit, claudeCodePrompt, archiveItems, archiveSnapshots, deleteItems, claudeAuthStatus, claudeLogout, submitClaudeLoginCode, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
   acceptAllReadings, resolveReadingSuggestion, setReadingSuggestion, videoVtt, pickFolder, NoGuiError,
   claudeRunnerStatus, startClaudeRun, installClaudeCode, openClaudeLogin, claudeCodeSettings, setClaudeCodeSettings,
   applyDocPlan, docPlanView, saveDocPlan, saveScriptReply,
@@ -116,6 +116,11 @@ app.post("/claude/key", async (c) => {
 app.post("/claude/login", async (c) => {
   await startClaudeLogin();
   return c.json(claudeAuthStatus());
+});
+app.post("/claude/login/code", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const r = submitClaudeLoginCode(String(b.code ?? ""));
+  return c.json(r, r.ok ? 200 : 400);
 });
 app.post("/claude/logout", async (c) => {
   await claudeLogout();

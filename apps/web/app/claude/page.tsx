@@ -10,6 +10,7 @@ type Status = { source: string; label: string; profiles: string[]; antInstalled:
 export default function ClaudePage() {
   const { data, reload } = useApi<Status>("/claude/status", 3000);
   const [key, setKey] = useState("");
+  const [code, setCode] = useState("");
   const a = useAction();
   const t = useAction();
   return (
@@ -50,6 +51,16 @@ export default function ClaudePage() {
         <p className="mb-3 text-sm text-soft">Ứng dụng tự cài công cụ đăng nhập chính thức của Anthropic, rồi mở trang đăng nhập trong trình duyệt của <b>máy tính đang chạy ứng dụng</b>. Đăng nhập xong không cần chép khoá. Dùng tài khoản Anthropic Console (API, tính phí theo lượng dùng). Gói Claude Pro/Max trên claude.ai không đăng nhập ở đây được: dùng gói qua Claude Code (xem trên).</p>
         <button className="btn btn-primary" disabled={a.busy || data?.login.running} onClick={() => a.run(async () => { await api("/claude/login", { method: "POST" }); reload(); })}>{data?.login.running ? "Đang chờ đăng nhập…" : "Đăng nhập tài khoản Anthropic"}</button>
         {data?.login.message && <div className="mt-2 text-sm">{data.login.message}</div>}
+        {data?.login.running && (
+          <div className="mt-3 rounded-lg bg-paper p-3">
+            <label className="label" htmlFor="ant-code">Trang đăng nhập hiện "Authentication code"? Bấm Copy code ở đó rồi dán vào đây:</label>
+            <div className="flex flex-wrap gap-2">
+              <input id="ant-code" className="input min-w-0 flex-1" autoComplete="off" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} placeholder="Dán mã xác thực" />
+              <button className="btn btn-primary" disabled={!code.trim() || a.busy} onClick={() => a.run(async () => { await api("/claude/login/code", { method: "POST", json: { code } }); setCode(""); reload(); }, "Đã gửi mã")}>Gửi mã</button>
+            </div>
+            <p className="mt-1 text-[12px] text-soft">Mã chỉ dùng một lần trong vài phút. Không gửi mã này cho người khác.</p>
+          </div>
+        )}
         {data?.login.url && <div className="mt-1 break-all text-xs">Nếu trình duyệt không tự mở, mở link này trên máy tính: <a className="text-brand underline" href={data.login.url} target="_blank" rel="noreferrer">{data.login.url}</a></div>}
       </div>
 

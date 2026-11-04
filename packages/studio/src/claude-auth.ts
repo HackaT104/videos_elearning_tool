@@ -147,7 +147,7 @@ export async function startClaudeLogin(): Promise<void> {
   // khoá cũ trong môi trường sẽ "che" hồ sơ đăng nhập – bỏ khi chạy lệnh đăng nhập
   delete env.ANTHROPIC_API_KEY;
   delete env.ANTHROPIC_AUTH_TOKEN;
-  const p = spawn(ant, ["auth", "login"], { env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  const p = spawn(ant, ["auth", "login"], { env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
   login.proc = p;
   const onData = (d: Buffer) => {
     const m = d.toString().match(/https:\/\/\S+/);
@@ -187,4 +187,14 @@ export async function testClaude(): Promise<{ ok: boolean; model?: string; messa
     if (e instanceof Anthropic.APIConnectionError) return { ok: false, message: "Không kết nối được Claude API – kiểm tra mạng" };
     return { ok: false, message: (e as Error).message };
   }
+}
+
+/** Trang đăng nhập hiện "Authentication code – Paste this into Anthropic CLI" → người dùng dán mã vào ứng dụng, ứng dụng chuyển cho `ant auth login`. */
+export function submitClaudeLoginCode(code: string): { ok: boolean; message: string } {
+  const c = code.trim();
+  if (!login.running || !login.proc?.stdin) return { ok: false, message: "Chưa có lượt đăng nhập nào đang chờ – bấm Đăng nhập tài khoản Anthropic trước" };
+  if (!/^[A-Za-z0-9_\-#.~]{10,400}$/.test(c)) return { ok: false, message: "Mã không hợp lệ – bấm Copy code trên trang đăng nhập rồi dán lại" };
+  login.proc.stdin.write(`${c}\n`);
+  login.message = "Đã gửi mã, đang hoàn tất đăng nhập…";
+  return { ok: true, message: login.message };
 }
