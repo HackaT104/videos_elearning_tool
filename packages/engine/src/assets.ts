@@ -5,6 +5,9 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } fr
 import { join } from "node:path";
 
 export const IMG_DIR = "assets/img/";
+/** Clip hoạt hình vẽ tay đã render (@cvs/engine-brush): <mã đệm>.mp4, cảnh tham chiếu "assets/cartoon/<file>". */
+export const CLIP_DIR = "assets/cartoon/";
+export const CLIP_FILE_RE = /^[a-f0-9]{16}\.mp4$/;
 export const ASSET_ID_RE = /^[a-f0-9]{16}-(\d{1,5})x(\d{1,5})\.(png|jpg|webp|svg)$/;
 export const ASSET_EXT = ["png", "jpg", "webp", "svg"] as const;
 export type AssetExt = (typeof ASSET_EXT)[number];
@@ -37,8 +40,21 @@ export function dropMissingImages(html: string, has: (id: string) => boolean): s
  * Trả về mã ảnh thiếu (cảnh tham chiếu nhưng không có file).
  */
 export function syncSceneImages(refs: Iterable<string>, assetsDir: string | undefined, workDir: string): { missing: string[] } {
-  const out = join(workDir, ...IMG_DIR.split("/").filter(Boolean));
-  const want = new Set([...refs].filter((id) => ASSET_ID_RE.test(id)));
+  return syncRefs(refs, assetsDir, workDir, IMG_DIR, ASSET_ID_RE);
+}
+
+/** Clip hoạt hình được cảnh tham chiếu (src="assets/cartoon/<file>"). */
+export function sceneClipRefs(html: string): string[] {
+  return [...new Set([...html.matchAll(/\ssrc="assets\/cartoon\/([^"]+)"/g)].map((m) => m[1]))];
+}
+/** Chép clip hoạt hình cảnh dùng (từ thư mục clip của dự án) vào <workDir>/assets/cartoon; xoá clip cũ. */
+export function syncSceneClips(refs: Iterable<string>, clipsDir: string | undefined, workDir: string): { missing: string[] } {
+  return syncRefs(refs, clipsDir, workDir, CLIP_DIR, CLIP_FILE_RE);
+}
+
+function syncRefs(refs: Iterable<string>, assetsDir: string | undefined, workDir: string, dirRel: string, re: RegExp): { missing: string[] } {
+  const out = join(workDir, ...dirRel.split("/").filter(Boolean));
+  const want = new Set([...refs].filter((id) => re.test(id)));
   const missing: string[] = [];
   if (want.size) mkdirSync(out, { recursive: true });
   for (const id of want) {

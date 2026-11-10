@@ -2,7 +2,7 @@
 // Prompt lấy đúng từ @cvs/ai (cùng quy tắc với đường API); kết quả ghi vào cảnh qua cùng bộ kiểm như AI trong app.
 
 import { checkTts, type Scene, type SceneDesign } from "@cvs/core";
-import { checkIllustration, customScenePrompt, decisionFrom, designErrors, designPrompt, illustrationPrompt, readingsPrompt, reviewReadingsPrompt, translateSubsPrompt, type Prompt } from "@cvs/ai";
+import { cartoonPrompt, checkIllustration, customScenePrompt, decisionFrom, designErrors, designPrompt, illustrationPrompt, readingsPrompt, reviewReadingsPrompt, translateSubsPrompt, type Prompt } from "@cvs/ai";
 import { getProject, getVideo, setVideoFlags, upsertVideo } from "@cvs/db";
 import { illustrationStyleHints } from "@cvs/engine";
 import { getTheme } from "@cvs/themes";
@@ -11,6 +11,7 @@ import { docPlanPrompt, rewritePrompt } from "./docplan";
 import { currentTiming, customLint, customSceneInput, readingIssues } from "./pipeline";
 import { translateInput } from "./subs";
 import { styleGenPromptFor } from "./style-gen";
+import { cartoonPolicy, testCartoon, withCartoonPolicy } from "./cartoon";
 
 export type SceneEdit = { design?: Partial<SceneDesign>; assumptions?: string[]; note?: string; by?: SceneDesign["by"] };
 
@@ -27,6 +28,7 @@ export function applySceneEdit(projectId: string, key: string, sceneId: string, 
   const video = row.data;
   const scene = video.scenes.find((s) => s.id === sceneId);
   if (!scene) return { ok: false, errors: [`Không có cảnh ${sceneId}`] };
+  withCartoonPolicy(video, getProject(projectId)?.settings);
   const by = e.by ?? e.design?.by ?? "user";
   const errors: string[] = [];
   if (!["ai", "user", "auto"].includes(by)) errors.push(`"by" phải là ai | user | auto`);
@@ -43,8 +45,16 @@ export function applySceneEdit(projectId: string, key: string, sceneId: string, 
       design = { template: "custom", params: {}, by, customCode: { ...(scene.design?.customCode ?? {}), [video.engine]: code } };
     } else {
       let params = isObj(d.params) ? { ...d.params } : {};
-      errors.push(...designErrors(scene, { template: d.template, params }));
+      // AI ghi thiết kế: kịch bản có sẵn thì chữ chỉ theo kịch bản (trừ khi ghi chú sửa yêu cầu); người dùng sửa tay thì không chặn
+      errors.push(...designErrors(scene, { template: d.template, params }, by === "ai" ? { video, note: e.note } : undefined));
       if (d.template === "illustration" && !errors.length) params = illustrationParams(video.style, video.font, scene, params, errors);
+      // cartoon: mã cảnh chỉ ghi qua set-cartoon (có vẽ thử); đổi tham số mà giữ brief → giữ mã, đổi brief → viết lại
+      if (d.template === "cartoon") {
+        const old = scene.design?.template === "cartoon" ? scene.design.params : null;
+        delete params.code;
+        delete params.clip;
+        if (old && String(old.brief ?? "").trim() === String(params.brief ?? "").trim() && old.code) params = { ...params, code: old.code };
+      }
       const decision = isObj(d.decision) ? decisionFrom({ ...d.decision, template: d.template }, d.decision.by === "ai" ? "ai" : "claude-code") : undefined;
       design = { template: d.template, params, by, ...(decision ? { decision } : {}) };
     }
@@ -60,6 +70,33 @@ export function applySceneEdit(projectId: string, key: string, sceneId: string, 
   upsertVideo(projectId, video);
   setVideoFlags(projectId, key, { approved: false });
   return { ok: true, errors: [] };
+}
+
+/**
+ * Ghi mã cảnh hoạt hình (Claude Code: `pnpm cvs set-cartoon`): lint + vẽ thử vài khung (ảnh trả về để Claude Code tự soát),
+ * đạt → lưu params.code, bỏ clip cũ (bước dựng vẽ lại), thiết kế cũ vào history, bỏ duyệt video.
+ */
+export async function applyCartoonCode(projectId: string, key: string, sceneId: string, b: { code?: unknown; assumptions?: unknown; note?: unknown }) {
+  const row = getVideo(projectId, key);
+  if (!row) return { ok: false, errors: ["Không tìm thấy video"], frames: [] };
+  const video = row.data;
+  const i = video.scenes.findIndex((s) => s.id === sceneId);
+  const scene = video.scenes[i];
+  if (!scene) return { ok: false, errors: [`Không có cảnh ${sceneId}`], frames: [] };
+  if (scene.design?.template !== "cartoon") return { ok: false, errors: ["Cảnh chưa là cartoon – set-design template cartoon (có brief) trước"], frames: [] };
+  if (typeof b.code !== "string" || !b.code.trim()) return { ok: false, errors: ['Cần "code" (mã cảnh: function scene(t) {...})'], frames: [] };
+  const settings = getProject(projectId)?.settings;
+  const T = currentTiming(projectId, video).scenes[i];
+  const r = await testCartoon(projectId, video, scene, T, cartoonPolicy(settings), b.code);
+  if (r.errors.length) return { ok: false, errors: r.errors, frames: r.frames };
+  const d = scene.design;
+  scene.history = [...(scene.history ?? []), d].slice(-5);
+  scene.design = { ...d, by: "ai", params: { ...d.params, code: b.code, clip: undefined } };
+  if (Array.isArray(b.assumptions)) scene.assumptions = [...new Set([...(scene.assumptions ?? []).filter((a) => !a.startsWith("AI:")), "AI: Cảnh hoạt hình vẽ tay do AI viết mã – cần duyệt hình", ...b.assumptions.map((a) => `AI: ${String(a)}`)])];
+  if (typeof b.note === "string" && b.note.trim()) scene.notes = [...(scene.notes ?? []), b.note.trim()];
+  upsertVideo(projectId, video);
+  setVideoFlags(projectId, key, { approved: false });
+  return { ok: true, errors: [], frames: r.frames, msPerFrame: r.msPerFrame, gpu: r.gpu, estimateSeconds: r.estimate };
 }
 
 /** SVG mới → lọc + kiểm; không gửi SVG mà brief giữ nguyên → giữ hình cũ. svgKey khớp brief để bước dựng không vẽ lại. */
@@ -79,7 +116,7 @@ function illustrationParams(style: string, font: string | undefined, scene: Scen
   return params;
 }
 
-export type PromptKind = "design" | "illustration" | "custom" | "readings" | "review-readings" | "analyze-doc" | "write-script" | "translate-subs" | "style-gen";
+export type PromptKind = "design" | "illustration" | "cartoon" | "custom" | "readings" | "review-readings" | "analyze-doc" | "write-script" | "translate-subs" | "style-gen";
 
 /** Prompt mà Claude API sẽ nhận cho việc này – Claude Code làm theo đúng prompt đó để chất lượng như đường API. "analyze-doc": key = mã tài liệu. */
 export async function claudeCodePrompt(projectId: string, key: string, kind: PromptKind, sceneId?: string, note?: string): Promise<Prompt> {
@@ -95,7 +132,8 @@ export async function claudeCodePrompt(projectId: string, key: string, kind: Pro
   }
   const row = getVideo(projectId, key);
   if (!row) throw new Error("Không tìm thấy video");
-  const video = row.data;
+  const settings = getProject(projectId)?.settings;
+  const video = withCartoonPolicy(row.data, settings);
   if (kind === "readings") {
     const items = readingIssues(video).filter((i) => !i.suggested).map((i) => ({ id: `${i.scene}#${i.idx}`, text: i.text, tts: i.tts, warnings: i.warnings }));
     return readingsPrompt(items, `${video.title}. ${video.context ?? ""}`);
@@ -113,6 +151,13 @@ export async function claudeCodePrompt(projectId: string, key: string, kind: Pro
     const brief = note?.trim() || (scene.design?.template === "illustration" ? String(scene.design.params.brief ?? "") : "");
     if (!brief.trim()) throw new Error("Cần mô tả hình (brief) – truyền --note hoặc đặt params.brief của cảnh illustration");
     return illustrationPrompt(brief, hintsFor(video.style, video.font));
+  }
+  if (kind === "cartoon") {
+    const d = scene.design;
+    if (d?.template !== "cartoon" || !String(d.params.brief ?? "").trim()) throw new Error("Cảnh chưa là cartoon có brief – set-design template cartoon với params.brief trước");
+    const pol = cartoonPolicy(settings);
+    const code = typeof d.params.code === "string" && d.params.code ? d.params.code : undefined;
+    return cartoonPrompt(video, scene, currentTiming(projectId, video).scenes[i], { brief: String(d.params.brief), clawd: pol.clawd, fast: pol.fast, layout: d.params.layout as never, note, current: note ? code : undefined });
   }
   if (kind === "custom") {
     const p = getProject(projectId);

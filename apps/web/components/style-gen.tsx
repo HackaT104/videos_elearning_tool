@@ -7,6 +7,7 @@ import { api, fileUrl } from "@/lib/api";
 import { useAction } from "@/lib/hooks";
 import { Badge, Msg, Progress } from "@/components/ui";
 import { ClaudeCodeStatus, useClaudeCode } from "@/components/claude-code";
+import { AWESOME_PREFIX, AwesomePicker } from "@/components/sample-picker";
 
 type Adjust = { field: string; from: string | number; to: string | number; reason: string };
 export type CustomRec = {
@@ -62,24 +63,34 @@ export async function uploadStyleFiles(pid: string, files: File[], cur: StyleSel
 type FilmStyle = { slug: string; en: string; category_en: string; uses: string[]; film: string; line: string; poster: string };
 const EDU = /course|lesson|explainer|tutorial|onboarding|how-to|training|education/i;
 
-/** 66 phong cách phim mẫu (lemo-opuscar): chọn một làm gốc tinh thần – hợp bài giảng xếp trước. */
-function FilmStylePicker({ value, onChange }: { value: string | null; onChange: (slug: string | null) => void }) {
+/**
+ * Phong cách mẫu làm gốc tinh thần: 66 phong cách phim (lemo-opuscar, đóng gói sẵn – hợp bài giảng xếp trước)
+ * hoặc mẫu video từ catalog awesome-opus5-5-videos (tải từ GitHub khi mở). Chỉ chọn một.
+ */
+function FilmStylePicker({ pid, value, onChange, onPoster }: { pid: string; value: string | null; onChange: (slug: string | null) => void; onPoster: (assetId: string) => void }) {
   const [list, setList] = useState<FilmStyle[] | null>(null);
   const [open, setOpen] = useState(false);
+  const isSample = !!value?.startsWith(AWESOME_PREFIX);
+  const [tab, setTab] = useState<"lemo" | "awesome">(isSample ? "awesome" : "lemo");
   useEffect(() => {
-    if ((open || value) && !list) api<FilmStyle[]>("/film-styles").then((l) => setList([...l].sort((a, b) => Number(b.uses.some((u) => EDU.test(u))) - Number(a.uses.some((u) => EDU.test(u)))))).catch(() => setList([]));
-  }, [open, value, list]);
+    if ((open || (value && !isSample)) && !list) api<FilmStyle[]>("/film-styles").then((l) => setList([...l].sort((a, b) => Number(b.uses.some((u) => EDU.test(u))) - Number(a.uses.some((u) => EDU.test(u)))))).catch(() => setList([]));
+  }, [open, value, list, isSample]);
   const cur = list?.find((x) => x.slug === value);
   return (
     <div className="mt-3">
       {value && (
         <p className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
-          <Badge tone="blue">Phong cách phim mẫu: {cur?.en ?? value}</Badge>
+          <Badge tone="blue">{isSample ? `Mẫu video: ${value!.slice(AWESOME_PREFIX.length)}` : `Phong cách phim mẫu: ${cur?.en ?? value}`}</Badge>
           <button type="button" className="min-h-8 px-1 text-[12px] text-soft underline" onClick={() => onChange(null)}>Bỏ</button>
         </p>
       )}
       <details open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-        <summary className="cursor-pointer text-[13px] font-medium text-soft">Lấy cảm hứng từ 66 phong cách phim mẫu (bảng trắng, phấn, bản vẽ, dataviz, isometric…)</summary>
+        <summary className="cursor-pointer text-[13px] font-medium text-soft">Lấy cảm hứng từ phong cách mẫu: 66 phong cách phim (bảng trắng, phấn, bản vẽ, dataviz…) hoặc hàng trăm mẫu video awesome-opus5-5</summary>
+        <div className="mt-2 flex gap-1" role="tablist" aria-label="Nguồn phong cách mẫu">
+          <button type="button" role="tab" aria-selected={tab === "lemo"} className={`btn min-h-8 px-2 text-[12px] ${tab === "lemo" ? "btn-primary" : ""}`} onClick={() => setTab("lemo")}>Phim mẫu lemo-opuscar (66)</button>
+          <button type="button" role="tab" aria-selected={tab === "awesome"} className={`btn min-h-8 px-2 text-[12px] ${tab === "awesome" ? "btn-primary" : ""}`} onClick={() => setTab("awesome")}>Mẫu video awesome-opus5-5</button>
+        </div>
+        {tab === "awesome" ? (open && <AwesomePicker pid={pid} value={value} onPick={(preset, poster) => (onChange(preset), poster && onPoster(poster))} />) : <>
         {!list ? <p className="mt-2 text-[13px] text-soft">Đang tải…</p> : (
           <ul className="mt-2 grid max-h-[440px] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6" aria-label="Phong cách phim mẫu">
             {list.map((x) => (
@@ -97,6 +108,7 @@ function FilmStylePicker({ value, onChange }: { value: string | null; onChange: 
           </ul>
         )}
         <p className="mt-1 text-[11px] text-soft">Mô tả phong cách và ảnh: lemo-opuscar © LemoLab (MIT; ảnh CC BY 4.0, đã thu nhỏ). Claude chuyển tinh thần phim sang màu, phông có dấu tiếng Việt và nhịp chuyển động của video bài giảng.</p>
+        </>}
       </details>
     </div>
   );
@@ -271,7 +283,7 @@ export function StyleGen({ pid, ai, data, reload, shots, previewBusy, fonts, the
         </div>
       </div>
 
-      <FilmStylePicker value={preset} onChange={setPreset} />
+      <FilmStylePicker pid={pid} value={preset} onChange={setPreset} onPoster={(id) => { setImages((xs) => (xs.includes(id) || xs.length >= 6 ? xs : [...xs, id])); reload(); }} />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" className="btn btn-primary" disabled={a.busy || up.busy || running || (!prompt.trim() && !images.length && !video && !docs.length && !preset)} onClick={generate}>
           {running ? "Claude đang tạo…" : base ? "Tạo bản chỉnh" : "Tạo phong cách"}

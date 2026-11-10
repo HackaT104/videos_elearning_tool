@@ -15,6 +15,7 @@ export function parseOpts(p: Project, level: string) {
 /** Lưu video vừa bóc/viết: giữ thiết kế, ghi chú, câu đã sửa của cảnh cùng lời thoại; giữ giọng, nhịp, phong cách cũ. */
 export function saveParsedVideo(p: Project, v: Video, fileId: string) {
   if (p.settings.font) v.font = p.settings.font;
+  if (p.settings.skill) v.skill = p.settings.skill;
   const existing = getVideo(p.id, v.key);
   if (existing) {
     v.scenes.forEach((s) => {
@@ -29,6 +30,7 @@ export function saveParsedVideo(p: Project, v: Video, fileId: string) {
     v.pace = existing.data.pace;
     v.style = existing.data.style;
     v.font = existing.data.font;
+    v.skill = existing.data.skill;
     v.engine = existing.data.engine;
   }
   upsertVideo(p.id, v, { file_id: fileId, status: existing?.status ?? "script" });

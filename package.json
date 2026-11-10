@@ -1,7 +1,7 @@
 {
   "name": "course-video-studio",
   "private": true,
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Course Video Studio – tạo video e-learning tự động từ Word/Excel",
   "packageManager": "pnpm@10.28.0",
   "engines": {
@@ -30,6 +30,7 @@
     "@cvs/engine": "workspace:*",
     "@cvs/engine-hf": "workspace:*",
     "@cvs/engine-rmt": "workspace:*",
+    "@cvs/engine-brush": "workspace:*",
     "@cvs/qa": "workspace:*",
     "@cvs/themes": "workspace:*",
     "@cvs/tts": "workspace:*",

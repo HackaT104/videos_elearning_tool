@@ -140,6 +140,10 @@ export async function setSvg(api: Api, pid: string, key: string, sid: string, sv
   return api.patch(`${vpath(pid, key)}/scenes/${enc(sid)}`, { design: { template: "illustration", params: { ...cur, brief: b, svg } }, note, by: "ai" });
 }
 
+/** Ghi mã cảnh hoạt hình (vẽ thử trên worker; trả lỗi + ảnh khung để soát). */
+export const setCartoon = (api: Api, pid: string, key: string, sid: string, code: string, note?: string, assumptions?: string[]) =>
+  api.post(`${vpath(pid, key)}/scenes/${enc(sid)}/cartoon`, { code, note, assumptions });
+
 /** Ghi mã cảnh tùy biến theo engine của video. */
 export async function setCustomScene(api: Api, pid: string, key: string, sid: string, code: string, note?: string) {
   const v = await api.get(vpath(pid, key));

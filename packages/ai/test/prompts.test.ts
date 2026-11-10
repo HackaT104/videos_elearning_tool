@@ -14,7 +14,7 @@ vi.mock("../src/client", () => ({
   }),
 }));
 
-const { CUSTOM_SCENE_CHECKLIST, MOTION_CHECKLIST, REVIEW_BATCH, designScene, drawIllustration, fixReadings, reviewReadings, reviewReadingsPrompt, reviseScene, writeCustomScene } = await import("../src/index");
+const { CUSTOM_SCENE_CHECKLIST, MOTION_CHECKLIST, REVIEW_BATCH, designErrors, designPrompt, designScene, drawIllustration, fixReadings, reviewReadings, reviewReadingsPrompt, reviseScene, writeCustomScene } = await import("../src/index");
 const { DESIGN_TEMPLATE_IDS, TEMPLATES } = await import("@cvs/engine");
 
 const video: any = { key: "V1", title: "Tín chỉ carbon", level: "cơ bản", style: undefined, font: undefined, scenes: [] };
@@ -54,7 +54,8 @@ describe("designScene / reviseScene", () => {
 
   it("kiểm tham số: template lạ, cue vượt số câu, ví dụ hợp lệ", async () => {
     reply = { template: DESIGN_TEMPLATE_IDS[0], params: {}, assumptions: [] };
-    await designScene(video, scene, T as any);
+    // kịch bản AI viết: chỉ kiểm tham số (chữ ví dụ của template không có trong kịch bản thử); bật hoạt hình để xét cả cartoon
+    await designScene({ ...video, aiWritten: true, cartoon: {} }, scene, T as any);
     const validate = calls[0].validate!;
     expect(validate({ template: "khong-co", params: {} })).toEqual(['template "khong-co" không có trong thư viện']);
     // cảnh thử có 2 câu: chỉ xét ví dụ không đặt mốc từ câu thứ 3 trở đi
@@ -152,5 +153,26 @@ describe("rà soát cách đọc", () => {
     reply = { fixes: [{ id: "s1#0", tts: "câu không" }, { id: "khac", tts: "x" }] };
     expect(await fixReadings(items.slice(0, 1))).toEqual([{ id: "s1#0", tts: "câu không" }]);
     expect(calls[0].opts.content).toContain('"fixes"');
+  });
+});
+
+describe("chữ trên màn hình theo kịch bản có sẵn", () => {
+
+  const extra = { template: "title-card", params: { title: "Tín chỉ carbon", subtitle: "Câu một" } };
+  it("chặn chữ ngoài cột chữ trên màn hình, trừ khi có ghi chú sửa hoặc kịch bản AI viết", () => {
+    expect(designErrors(scene, extra, { video }).join()).toContain("«Câu một»");
+    expect(designErrors(scene, { template: "title-card", params: { title: "**Tín chỉ** carbon" } }, { video })).toEqual([]);
+    expect(designErrors(scene, extra, { video, note: "thêm phụ đề" })).toEqual([]);
+    expect(designErrors(scene, extra, { video: { ...video, aiWritten: true } })).toEqual([]);
+    expect(designErrors(scene, extra)).toEqual([]);
+  });
+  it("prompt nêu quy tắc chặt khi kịch bản có sẵn", () => {
+    expect(designPrompt(video, scene).content).toContain("KỊCH BẢN CÓ SẴN");
+    expect(designPrompt({ ...video, aiWritten: true }, scene).content).not.toContain("KỊCH BẢN CÓ SẴN");
+  });
+  it("designScene đưa kiểm chữ vào vòng thử lại", async () => {
+    reply = { template: "title-card", params: { title: "Tín chỉ carbon" }, assumptions: [] };
+    await designScene(video, scene, T as any);
+    expect(calls[0].validate!(extra).join()).toContain("«Câu một»");
   });
 });

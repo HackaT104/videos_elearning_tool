@@ -38,7 +38,7 @@ describe("PATCH thiết kế cảnh", () => {
   it("template hợp lệ → lưu, thiết kế cũ vào lịch sử, assumptions AI cũ được thay, bỏ duyệt", async () => {
     setVideoFlags(pid, KEY, { approved: true });
     const ex = TEMPLATES["split-compare"].example;
-    let r = await patch("s1", { design: { template: "title-card", params: TEMPLATES["title-card"].example }, by: "ai" });
+    let r = await patch("s1", { design: { template: "title-card", params: TEMPLATES["title-card"].example }, by: "user" });
     expect(await r.json()).toEqual({ ok: true, errors: [] });
     r = await patch("s1", { design: { template: "split-compare", params: ex }, assumptions: ["Nhãn «Trước»"], note: "đổi sang so sánh", by: "ai" });
     expect(r.status).toBe(200);
@@ -49,6 +49,15 @@ describe("PATCH thiết kế cảnh", () => {
     expect(s.history?.map((h) => h.template)).toEqual(["title-card"]);
     expect(s.assumptions).toEqual(["Ghi chú người duyệt", "AI: Nhãn «Trước»"]);
     expect(s.notes).toEqual(["đổi sang so sánh"]);
+  });
+
+  it("kịch bản có sẵn: AI ghi chữ ngoài kịch bản bị từ chối, trừ khi có ghi chú sửa; người dùng sửa tay thì được", async () => {
+    const params = { title: "Chữ AI tự nghĩ ra" };
+    const r = await (await patch("s2", { design: { template: "title-card", params }, by: "ai" })).json();
+    expect(r.ok).toBe(false);
+    expect(r.errors.join()).toContain("«Chữ AI tự nghĩ ra»");
+    expect(await (await patch("s2", { design: { template: "title-card", params }, note: "đổi tiêu đề thành Chữ AI tự nghĩ ra", by: "ai" })).json()).toEqual({ ok: true, errors: [] });
+    expect(await (await patch("s2", { design: { template: "title-card", params } })).json()).toEqual({ ok: true, errors: [] });
   });
 
   it("lịch sử giữ tối đa 5 thiết kế", async () => {
@@ -71,7 +80,7 @@ describe("PATCH thiết kế cảnh", () => {
 
   it("illustration: SVG được lọc + gắn svgKey; đổi tham số không gửi SVG (cùng brief) → giữ hình; SVG sơ sài bị từ chối", async () => {
     const brief = "Công nhân đội mũ bảo hộ đứng trên sàn xưởng";
-    let r = await patch("s2", { design: { template: "illustration", params: { title: "Bảo hộ", brief, svg: SVG } }, by: "ai" });
+    let r = await patch("s2", { design: { template: "illustration", params: { title: getVideo(pid, KEY)!.data.title, brief, svg: SVG } }, by: "ai" });
     expect(await r.json()).toEqual({ ok: true, errors: [] });
     let p = getVideo(pid, KEY)!.data.scenes[1].design!.params as any;
     expect(p.svg).toContain('id="part-2"');

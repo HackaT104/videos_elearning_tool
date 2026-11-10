@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { sha1, writeFileAtomic, writeJsonAtomic, type Timing, type Video } from "@cvs/core";
-import { assetExists, buildSceneSpec, dropMissingImages, OVERLAY_ID, overlaySpec, overlayWarnings, sceneImageRefs, scriptMarkdown, syncSceneImages, type BuildInput, type BuildResult } from "@cvs/engine";
+import { assetExists, buildSceneSpec, dropMissingImages, OVERLAY_ID, overlaySpec, overlayWarnings, sceneClipRefs, sceneImageRefs, scriptMarkdown, syncSceneClips, syncSceneImages, type BuildInput, type BuildResult } from "@cvs/engine";
 import { baseCss, fontFaceCss, getTheme, groundHtml, SKETCH_FILTER_SVG } from "@cvs/themes";
 import { compileScene, replaceTimingBlock } from "./compile";
 import { lintErrors, lintScene } from "./lint";
@@ -97,6 +97,7 @@ export async function hfBuild(input: BuildInput): Promise<BuildResult> {
   const assumptions: Record<string, string[]> = {};
   const files: string[] = [];
   const images = new Set<string>();
+  const clips = new Set<string>();
   video.scenes.forEach((scene, i) => {
     const T = timing.scenes[i];
     const file = join(comp, `${scene.id}.html`);
@@ -114,6 +115,7 @@ export async function hfBuild(input: BuildInput): Promise<BuildResult> {
     }
     for (const issue of lintErrors(lintScene(html, scene.id))) warnings.push(`${scene.id} lint ${issue.rule}: ${issue.message}`);
     for (const id of sceneImageRefs(html)) images.add(id);
+    for (const id of sceneClipRefs(html)) clips.add(id);
     writeIfChanged(file, html);
     files.push(file);
   });
@@ -130,6 +132,7 @@ export async function hfBuild(input: BuildInput): Promise<BuildResult> {
   warnings.push(...overlayWarnings(input.overlay, (id) => assetExists(input.assetsDir, id)));
   // ảnh của dự án mà cảnh dùng → assets/img (đường dẫn tương đối, như giọng đọc ở assets/vo)
   for (const id of syncSceneImages(images, input.assetsDir, workDir).missing) warnings.push(`Thiếu ảnh ${id} trong thư mục ảnh của dự án`);
+  for (const id of syncSceneClips(clips, input.clipsDir, workDir).missing) warnings.push(`Thiếu clip hoạt hình ${id} – dựng lại cảnh để vẽ lại`);
   // xóa cảnh thừa
   for (const f of readdirSync(comp)) if (!video.scenes.some((s) => `${s.id}.html` === f) && !(ov && f === `${OVERLAY_ID}.html`)) rmSync(join(comp, f), { force: true });
 

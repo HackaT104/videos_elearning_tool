@@ -51,6 +51,19 @@ SOFTWARE.
 - **Pexels** (https://www.pexels.com/license/): cần khoá API miễn phí của người dùng; ảnh dùng thương mại được, không bắt buộc ghi công nhưng điều khoản API yêu cầu ghi nguồn Pexels và tác giả khi hiển thị – ứng dụng ghi trong `credits.txt`. Giới hạn mặc định của Pexels: 200 yêu cầu/giờ.
 - Ứng dụng gọi các API trên với User-Agent `CourseVideoStudio/<phiên bản>` (không kèm thông tin cá nhân), tuần tự và cách nhau ≥ 1,1 s mỗi máy chủ.
 
+## Claude Animation Base (cảnh hoạt hình vẽ tay)
+
+- Nguồn: Claude Animation Base (`ClaudeAnimationBase-main`, người dùng tải về 2026-11-10) – © 2026 John Heibel, **MIT License**
+  (văn bản đầy đủ: `packages/engine-brush/kit/LICENSE-claude-animation-base.txt`).
+- `packages/engine-brush/kit/core.js`, `timeline.js`, `clawd.js`: sao **nguyên văn** (không sửa).
+- `packages/engine-brush/kit/character.js` (nhân vật "Kỹ sư") và `cvs.js` (nối vào ứng dụng) do Course Video Studio viết, dùng API của kit.
+- `packages/ai/src/cartoon.ts`: nguyên tắc dựng và tham chiếu API **rút gọn, dịch** từ `ANIMATION_GUIDE.md` của kit (MIT).
+- **Nhân vật Clawd** là linh vật của Claude Code (Anthropic). Giấy phép MIT của kit áp cho mã, **không** cấp quyền dùng hình nhân vật
+  hay thương hiệu: ứng dụng tắt Clawd mặc định (bật ở bước Phong cách, chỉ nên dùng cho video nội bộ); nhân vật mặc định là "Kỹ sư".
+- Thư viện chạy trong trang vẽ (không sửa, nạp từ `node_modules`): **p5.js** 2.3.3 – **LGPL-2.1** (https://github.com/processing/p5.js,
+  mã nguồn và giấy phép đi kèm trong `node_modules/p5`; có thể thay bằng bản p5.js khác cùng API); **p5.brush** 2.2.3 – **MIT**
+  (https://github.com/acamposuribe/p5.brush).
+
 ## lemo-opuscar (phong cách phim mẫu)
 
 - Nguồn: https://github.com/lemomo-ai/lemo-opuscar (commit bebbbe1, 2026-11-01) – © 2026 LemoLab.

@@ -17,6 +17,7 @@ import { ffmpeg, probe, run, FFMPEG } from "@cvs/tts";
 import { assetFile } from "./assets";
 import { listStylePreviews, representativeScene, stylePreview } from "./extras";
 import { MAX_STYLE_DOCS, styleDoc, type StyleDoc } from "./style-docs";
+import { getStyleSample, sampleBrief } from "./style-samples";
 
 export type CustomThemeRecord = {
   id: CustomThemeId;
@@ -181,7 +182,7 @@ export function setStyleBrief(pid: string, input: { prompt?: unknown; images?: u
   const pdfBytes = docs.flatMap((d) => styleDoc(pid, d)!.pdfs).reduce((n, f) => n + f.size, 0);
   if (pdfBytes > 25 * 1024 * 1024) throw new Error("Tổng PDF quá lớn để gửi cho Claude (tối đa 25 MB) – bỏ bớt tài liệu");
   const preset = input.preset ? String(input.preset) : null;
-  if (preset && !getFilmStyle(preset)) throw new Error("Không có phong cách phim mẫu này");
+  if (preset && !getFilmStyle(preset) && !getStyleSample(preset)) throw new Error("Không có phong cách mẫu này – tải lại danh sách mẫu");
   const base = input.base ? String(input.base) : null;
   if (base && !getProjectTheme(pid, base) && !THEME_IDS.includes(base as never)) throw new Error("Phong cách gốc không có");
   if (!prompt && !images.length && !video && !docs.length && !preset) throw new Error("Cần mô tả phong cách, một phong cách phim mẫu, hoặc ít nhất một ảnh / video / tài liệu tham chiếu");
@@ -315,7 +316,9 @@ export async function styleRefs(pid: string): Promise<StyleRefs> {
   const v = b.video ? styleVideo(pid, b.video) : null;
   const docs = (b.docs ?? []).map((d) => styleDoc(pid, d)).filter((d): d is StyleDoc => !!d).map(({ id, name, kind, images, pdfs, notes }) => ({ id, name, kind, images, pdfs, notes }));
   const fs = b.preset ? getFilmStyle(b.preset) : null;
-  return { prompt: b.prompt, base: b.base, images, video: v ? { id: v.id, name: v.name, frames: v.frames } : null, docs, preset: fs ? { slug: fs.slug, name: fs.en } : null };
+  const sm = b.preset && !fs ? getStyleSample(b.preset) : null;
+  const preset = fs ? { slug: fs.slug, name: fs.en } : sm ? { slug: b.preset!, name: sampleBrief(sm).name } : null;
+  return { prompt: b.prompt, base: b.base, images, video: v ? { id: v.id, name: v.name, frames: v.frames } : null, docs, preset };
 }
 const readName = (pid: string, id: string) => {
   try {
@@ -350,9 +353,18 @@ function styleInput(pid: string, refs: StyleRefs): StyleGenInput {
     base,
     images: refs.images.length,
     frames: refs.video?.frames.length ?? 0,
-    preset: refs.preset ? { name: refs.preset.name, text: filmStyleBrief(refs.preset.slug) ?? "" } : null,
+    preset: presetBrief(refs.preset?.slug),
     docs: refs.docs.map((d) => ({ name: d.name, kind: d.kind, images: d.images.length, pdfs: d.pdfs.map((f) => f.name), notes: d.notes })),
   };
+}
+
+/** Phong cách mẫu cho prompt: STYLE.md của lemo-opuscar, hoặc prompt gốc của mẫu video (catalog awesome). */
+function presetBrief(slug: string | undefined): StyleGenInput["preset"] {
+  if (!slug) return null;
+  const fs = getFilmStyle(slug);
+  if (fs) return { name: fs.en, text: filmStyleBrief(slug) ?? "" };
+  const sm = getStyleSample(slug);
+  return sm ? sampleBrief(sm) : null;
 }
 
 /** Prompt đúng như đường API (Claude Code: `pnpm cvs prompt style-gen <pid>`). */

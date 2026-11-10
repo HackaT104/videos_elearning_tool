@@ -47,7 +47,8 @@ export function autoDesign(video: Video, scene: Scene, index: number): SceneDesi
       const rest = m[1].trim();
       const pct = rest.startsWith("%");
       const dec = /,(\d+)/.exec(statSrc)?.[1]?.length ?? 0;
-      const caption = scene.onscreen.find((o) => o !== statSrc) ?? scene.title;
+      // kịch bản có sẵn: không lấy tiêu đề cảnh làm chú thích (không phải chữ trên màn hình)
+      const caption = scene.onscreen.find((o) => o !== statSrc) ?? (video.aiWritten ? scene.title : undefined);
       return d("stat-hero", { value: v, decimals: dec, suffix: pct ? "%" : rest.startsWith("°") ? rest : undefined, unit: !pct && !rest.startsWith("°") && rest ? rest : undefined, caption });
     }
   }
@@ -72,7 +73,7 @@ export function autoDesign(video: Video, scene: Scene, index: number): SceneDesi
   if (scene.onscreen.length === 1) {
     return d("quote-banner", { quote: scene.onscreen[0], kicker: isLast ? undefined : undefined });
   }
-  if (isLast && n > 0) {
+  if (isLast && n > 0 && video.aiWritten) {
     return { template: "quote-banner", params: { quote: scene.sentences[n - 1].text }, by: "auto" };
   }
   return d("draft", {});

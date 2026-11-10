@@ -1,0 +1,19 @@
+{
+  "name": "@cvs/engine-brush",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cảnh hoạt hình vẽ tay (p5.js + p5.brush, kit Claude Animation Base – MIT) render trước thành clip cho HyperFrames/Remotion",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cvs/core": "workspace:*",
+    "@cvs/tts": "workspace:*",
+    "p5": "2.3.3",
+    "p5.brush": "2.2.3",
+    "playwright": "1.63.0"
+  }
+}

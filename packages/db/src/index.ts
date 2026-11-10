@@ -31,6 +31,12 @@ export const paths = {
   themeLibrary: () => join(STORAGE, "themes"),
   /** Tư liệu tham chiếu cho "Tạo phong cách bằng AI": video mẫu + khung trích, ảnh thu nhỏ, đề bài. */
   styleRefs: (pid: string) => join(STORAGE, "projects", pid, "style-refs"),
+  /** Clip hoạt hình vẽ tay đã render của dự án (<mã đệm>.mp4, @cvs/engine-brush). */
+  cartoon: (pid: string) => join(STORAGE, "projects", pid, "cartoon"),
+  /** Thư viện skill dựng cảnh dùng chung (<mã>.json) – nhập từ link GitHub hoặc file .md. */
+  skills: () => join(STORAGE, "skills"),
+  /** Đệm dữ liệu tải từ mạng (catalog phong cách mẫu…). */
+  cache: () => join(STORAGE, "cache"),
 };
 
 export type ProjectSettings = {
@@ -46,6 +52,11 @@ export type ProjectSettings = {
   styleConfirmed?: boolean;
   /** Cặp phông chữ cho video (FONT_PAIRS); trống = theo phong cách. */
   font?: string;
+  /** Skill dựng cảnh cho video mới của dự án; trống = cách dựng mặc định. */
+  skill?: string;
+  /** Cảnh hoạt hình vẽ tay (p5.brush): bật cho AI chọn; clawd = cho dùng nhân vật Clawd (linh vật Anthropic, mặc định tắt);
+   *  quality "nhe" = bỏ tô màu nước (nhanh ~10 lần), "day-du" = màu nước (chậm, nên có GPU rời). */
+  cartoon?: { enabled: boolean; clawd?: boolean; quality?: "nhe" | "day-du" };
   /** Tuỳ chọn CIT mặc định cho dự án. */
   cit?: { temperature?: number; seed?: number | null; useDict?: boolean };
   /** Thư mục người dùng chọn để lưu dự án đã xong (bước Xuất). */
@@ -290,7 +301,7 @@ export function listVoices(provider?: string) {
 }
 
 // ---------- yêu cầu AI chờ Claude Code (gói Claude đã đăng ký, không dùng API) ----------
-export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "custom-scene", "fix-readings", "review-readings", "agent", "analyze-doc", "write-script", "translate-subs", "style-gen"] as const;
+export const CLAUDE_REQUEST_KINDS = ["revise", "design-video", "illustration", "cartoon", "custom-scene", "fix-readings", "review-readings", "agent", "analyze-doc", "write-script", "translate-subs", "style-gen"] as const;
 export type ClaudeRequestKind = (typeof CLAUDE_REQUEST_KINDS)[number];
 export type ClaudeRequestStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 export type ClaudeRequest = {

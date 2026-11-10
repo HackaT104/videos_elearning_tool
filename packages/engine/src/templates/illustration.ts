@@ -8,7 +8,8 @@ import { dim, enter, shift } from "../motion";
 import type { TimeRef } from "../spec";
 import { parseSvg, serializeSvg, svgViewBox, type SvgEl } from "../svg-sanitize";
 import { blockHeight, fitSize, rich } from "../text";
-import { beatOf, box, header, px, SAFE, SpecBuilder, type Beat, type TemplateDef } from "./common";
+import { CLIP_DIR, CLIP_FILE_RE } from "../assets";
+import { beatOf, box, header, px, SAFE, SpecBuilder, type Beat, type TemplateCtx, type TemplateDef } from "./common";
 
 const beatSchema = { type: "object", properties: { cue: { type: "integer", minimum: 0 }, f: { type: "number", minimum: 0, maximum: 1 } }, required: ["cue"] };
 
@@ -82,7 +83,14 @@ export const illustration: TemplateDef<IllustrationParams> = {
     points: [{ text: "Mũ bảo hộ cài quai" }, { text: "Kính chống bắn tóe" }, { text: "Găng tay chống cắt" }],
     layout: "left",
   },
-  build(P, ctx) {
+  build: (P, ctx) => buildArt(P, ctx, "svg"),
+};
+
+/**
+ * Bố cục chung cho cảnh "một hình lớn + chữ": hình minh hoạ SVG (illustration) hoặc clip hoạt hình vẽ tay (cartoon).
+ * Chữ (tiêu đề, ý chính, chú thích) là HTML phủ theo kịch bản – clip hoạt hình không chứa chữ.
+ */
+export function buildArt(P: IllustrationParams & { clip?: string }, ctx: TemplateCtx, kind: "svg" | "clip") {
     const b = new SpecBuilder(ctx);
     const n = ctx.sentences.length;
     const points = (P.points ?? []).filter((p) => p?.text).slice(0, 3);
@@ -90,13 +98,17 @@ export const illustration: TemplateDef<IllustrationParams> = {
     const y0 = P.title || P.kicker ? header(b, { kicker: P.kicker, title: P.title }) : SAFE.y0 + 30;
     const yMax = SAFE.y1 - 12;
 
-    // SVG: lọc lại (phòng thủ nhiều lớp – kể cả tham số người dùng sửa tay)
-    const parsed = P.svg ? parseSvg(P.svg, "illustration") : null;
+    // SVG: lọc lại (phòng thủ nhiều lớp – kể cả tham số người dùng sửa tay); clip: chỉ nhận tên file đúng mẫu
+    const parsed = kind === "svg" && P.svg ? parseSvg(P.svg, "illustration") : null;
     const root = parsed?.root ?? null;
-    if (P.svg && !root) b.assume(`SVG minh hoạ bị từ chối (${parsed?.error}) – hiện khung giữ chỗ`);
-    if (!P.svg) b.assume(`Chưa có hình minh hoạ${P.brief ? ` cho «${P.brief.slice(0, 80)}»` : ""} – cần đăng nhập Claude để vẽ; đang hiện khung giữ chỗ`);
-    if (root) b.assume(`Hình minh hoạ do AI vẽ${P.brief ? ` theo mô tả «${P.brief.slice(0, 80)}»` : ""} – cần duyệt hình`);
-    const vb = root ? svgViewBox(root) : ([0, 0, 800, 600] as const);
+    const clip = kind === "clip" && typeof P.clip === "string" && CLIP_FILE_RE.test(P.clip) ? P.clip : null;
+    const brief = P.brief ? ` theo mô tả «${P.brief.slice(0, 80)}»` : "";
+    if (kind === "svg") {
+      if (P.svg && !root) b.assume(`SVG minh hoạ bị từ chối (${parsed?.error}) – hiện khung giữ chỗ`);
+      if (!P.svg) b.assume(`Chưa có hình minh hoạ${P.brief ? ` cho «${P.brief.slice(0, 80)}»` : ""} – cần đăng nhập Claude để vẽ; đang hiện khung giữ chỗ`);
+      if (root) b.assume(`Hình minh hoạ do AI vẽ${brief} – cần duyệt hình`);
+    } else b.assume(clip ? `Cảnh hoạt hình vẽ tay do AI dựng${brief} – cần duyệt hình` : `Chưa có clip hoạt hình${brief} – bước dựng cảnh sẽ vẽ (cần Claude); đang hiện khung giữ chỗ`);
+    const vb = root ? svgViewBox(root) : kind === "clip" ? ([0, 0, 1920, 1080] as const) : ([0, 0, 800, 600] as const);
     const ar = vb[2] / vb[3];
 
     // bố cục: vùng hình + cột/hàng ý chính + chú thích
@@ -167,6 +179,9 @@ export const illustration: TemplateDef<IllustrationParams> = {
         b.anim({ id: `${ctx.p}-i-${d.attrs.id}`, from: { dash: 1 }, to: { dash: 0 }, at, dur: ctx.slow ? 1.2 : 0.9, ease: "power2.inOut" });
       });
       lastReveal = beats.at(-1) ?? lastReveal;
+    } else if (clip) {
+      // clip phủ kín khung (không bo – khớp tỉ lệ 16:9); bộ dựng tua video theo thời gian cảnh, không phát tiếng
+      inner = `<video class="cartoon-clip" data-cvs-clip="1" muted playsinline preload="auto" src="${CLIP_DIR}${clip}" style="display:block;width:100%;height:100%;object-fit:cover;${layout === "full" && aw >= SAFE.w - 1 ? "" : "border-radius:var(--radius);"}"></video>`;
     } else {
       const s = Math.min(aw, ah) * 0.28;
       inner =
@@ -216,8 +231,7 @@ export const illustration: TemplateDef<IllustrationParams> = {
       });
     }
     return b.done();
-  },
-};
+}
 
 /** Gợi ý vẽ cho Claude: vai trò màu (biến CSS) + độ dày nét theo theme. */
 export function illustrationStyleHints(theme: { dark: boolean; stroke: number }): { strokeWidth: number; dark: boolean } {

@@ -14,3 +14,6 @@ export * from "./locations";
 export * from "./music";
 export { varietyQa } from "@cvs/qa";
 export * from "./stock";
+export * from "./skills";
+export * from "./style-samples";
+export * from "./cartoon";

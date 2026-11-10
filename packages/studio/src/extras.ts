@@ -16,6 +16,7 @@ import { currentTiming, makeCustomScene, stepBuild, stepQa, type Ctx } from "./p
 import { videoVtt } from "./subs";
 import { projectThemeIds } from "./style-gen";
 import { assetCredit } from "./assets";
+import { reviseCartoon, unusedCartoonClips } from "./cartoon";
 import { attributionLine, videoCredits } from "./stock";
 import { listMusic } from "./music";
 import { assertWritable, defaultVideoDir } from "./locations";
@@ -203,6 +204,10 @@ export function cleanupCandidates(projectId: string): CleanupItem[] {
     }
   }
   for (const d of ["render-test", "styles"]) if (existsSync(join(root, d))) items.push({ path: join(root, d), label: `Bản render thử / ảnh phong cách`, bytes: dirSize(join(root, d)) });
+  // hoạt hình vẽ tay: clip không còn cảnh nào dùng (mã/timing đã đổi) + ảnh vẽ thử
+  for (const f of unusedCartoonClips(projectId, listVideos(projectId).map((v) => v.data))) items.push({ path: f, label: `Clip hoạt hình cũ ${basename(f)}`, bytes: dirSize(f) });
+  const check = join(paths.cartoon(projectId), "check");
+  if (existsSync(check)) items.push({ path: check, label: "Ảnh vẽ thử hoạt hình", bytes: dirSize(check) });
   return items;
 }
 
@@ -350,6 +355,7 @@ export async function aiWriteScript(projectId: string, input: { kind: "outline" 
     sourceText: input.sourceText,
   });
   if (p.settings.font) video.font = p.settings.font;
+  if (p.settings.skill) video.skill = p.settings.skill;
   const f = addFile(projectId, `${input.fileName} (AI viết)`, input.level, "script", { kind: "script", videos: [video.key], aiWritten: true, outline });
   upsertVideo(projectId, video, { file_id: f.id, status: "script" });
   return { video, outline };
@@ -370,6 +376,15 @@ export async function reviseWithNote(ctx: Ctx, sceneId: string, note: string, o:
   const scene = video.scenes[i];
   scene.notes = [...(scene.notes ?? []), note];
   upsertVideo(ctx.projectId, video);
+  // cảnh hoạt hình: Claude sửa chính mã cảnh theo ghi chú (giữ brief), rồi dựng lại → vẽ lại clip
+  if (scene.design?.template === "cartoon" && !o.custom) {
+    ctx.progress("design", 10, `AI sửa cảnh hoạt hình ${sceneId}`);
+    await reviseCartoon(ctx.projectId, video, scene, currentTiming(ctx.projectId, video).scenes[i], ctx.settings, note);
+    upsertVideo(ctx.projectId, video);
+    setVideoFlags(ctx.projectId, ctx.key, { approved: false });
+    await stepQa(ctx);
+    return;
+  }
   if (o.custom || scene.design?.template === "custom") {
     ctx.progress("design", 10, `AI viết lại mã cảnh ${sceneId}`);
     await makeCustomScene(ctx, sceneId, note);

@@ -11,6 +11,7 @@ import { contactSheet, createHyperFramesEngine, launchBrowser, lintErrors, lintS
 import { createRemotionEngine, lintRemotionScene } from "@cvs/engine-rmt";
 import { audioQa, contentQa, layoutItems, makeReport, varietyQa, type QaItem, type QaReport } from "@cvs/qa";
 import { assetCredit, fillIllustrations } from "./assets";
+import { fillCartoons, withCartoonPolicy } from "./cartoon";
 import { creditLine, needsAttribution } from "./stock";
 import { mixFinal, rawRender } from "./music";
 import { CitClient, ensureCitRunning, ensureZerottsRunning, loadManifest, mockGenerate, synthesizeVideo, ZerottsClient } from "@cvs/tts";
@@ -46,7 +47,17 @@ export function engineFor(video: Video, settings: ProjectSettings, log?: (s: str
 function load(ctx: Ctx): Video {
   const row = getVideo(ctx.projectId, ctx.key);
   if (!row) throw new Error(`Không có video ${ctx.key}`);
-  return row.data;
+  return withCartoonPolicy(row.data, ctx.settings);
+}
+
+/** Viết mã / vẽ clip cho cảnh hoạt hình; dừng giữa chừng (tạm dừng/hủy) → Stopped. */
+async function cartoons(ctx: Ctx, video: Video, timing: Timing, step: StepName, render: boolean): Promise<number> {
+  try {
+    return await fillCartoons(ctx.projectId, video, timing, ctx.settings, { render, log: ctx.log, shouldStop: ctx.shouldStop, progress: (pct, msg) => ctx.progress(step, Math.min(95, pct), msg) });
+  } catch (e) {
+    if (ctx.shouldStop()) throw new Stopped();
+    throw e;
+  }
 }
 
 /** Phụ đề/logo hiệu lực của video (cài đặt dự án đọc mới mỗi lần dựng + phần ghi đè của video). */
@@ -61,6 +72,7 @@ function input(ctx: Pick<Ctx, "projectId">, video: Video, timing: Timing): Build
     voDir,
     workDir: paths.work(ctx.projectId, video.key, video.engine),
     assetsDir: paths.assets(ctx.projectId),
+    clipsDir: paths.cartoon(ctx.projectId),
     overlay: videoOverlay(ctx.projectId, video),
   };
 }
@@ -143,6 +155,8 @@ export async function stepDesign(ctx: Ctx, o: { redesign?: boolean } = {}) {
   // cảnh "illustration" AI chọn chỉ có brief → Claude vẽ SVG (lọc, lưu đệm theo brief + theme) trước khi build
   if (video.scenes.some((s) => s.design?.template === "illustration")) ctx.progress("design", 95, "Vẽ hình minh hoạ");
   await fillIllustrations(ctx.projectId, video, ctx.log);
+  // cảnh hoạt hình: Claude viết mã ngay khi thiết kế (vẽ clip ở bước dựng, theo timing cuối)
+  if (video.scenes.some((s) => s.design?.template === "cartoon")) await cartoons(ctx, video, timing, "design", false);
   upsertVideo(ctx.projectId, video, { status: "designed" });
   ctx.progress("design", 100);
 }
@@ -194,6 +208,8 @@ export async function stepBuild(ctx: Ctx) {
   // minh hoạ còn thiếu SVG (vừa sửa bằng AI / sửa tay brief) → vẽ trước khi dựng
   if (await fillIllustrations(ctx.projectId, video, ctx.log)) upsertVideo(ctx.projectId, video);
   const timing = currentTiming(ctx.projectId, video);
+  // cảnh hoạt hình: vẽ clip theo mã + timing hiện tại (đệm theo nội dung – timing/mã không đổi thì không vẽ lại)
+  if (video.scenes.some((s) => s.design?.template === "cartoon") && (await cartoons(ctx, video, timing, "build", true))) upsertVideo(ctx.projectId, video);
   const eng = engineFor(video, ctx.settings, ctx.log);
   const r = await eng.build(input(ctx, video, timing));
   for (const w of r.warnings) ctx.log(`build: ${w}\n`);
@@ -229,7 +245,7 @@ export async function stepQa(ctx: Ctx): Promise<QaReport> {
     // tự sửa đúng cảnh lỗi
     for (const sid of [...new Set(fixable.map((x) => x.scene))]) {
       const scene = video.scenes.find((s) => s.id === sid)!;
-      if (scene.design?.by === "user" || scene.design?.template === "custom") continue;
+      if (scene.design?.by === "user" || scene.design?.template === "custom" || scene.design?.template === "cartoon") continue;
       const note = fixable.filter((x) => x.scene === sid).map((x) => `${x.problem} → ${x.fix}`).join("; ");
       try {
         const r = await reviseScene(video, scene, note, timing.scenes[video.scenes.indexOf(scene)]);

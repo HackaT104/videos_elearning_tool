@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import {
-  apiBase, createApi, enc, getPrompt, markRequest, pendingRequests, projectsView, qaReport, renderVideo, setCustomScene, setReading, setSceneDesign, setSubs, setSvg, startCheck, suggestReading,
+  apiBase, createApi, enc, getPrompt, markRequest, pendingRequests, projectsView, qaReport, renderVideo, setCartoon, setCustomScene, setReading, setSceneDesign, setSubs, setSvg, startCheck, suggestReading,
   templatesView, videosView, videoView, vpath, waitJob,
 } from "./lib/cvs-api";
 
@@ -17,7 +17,7 @@ Xem
   video <pid> <key>                        Kịch bản + thiết kế + timing từng cảnh
   templates                                Thư viện template (schema, ví dụ), biểu tượng, kiểu chữ chuyển động, phong cách, phông
   readings <pid> [key] [--warn]            Mọi câu (id, lời thoại, cách đọc, cảnh báo, đề xuất đang chờ); --warn: chỉ câu còn cảnh báo
-  prompt <design|illustration|custom|readings|review-readings|write-script> <pid> <key> [sid] [--note "..."]
+  prompt <design|illustration|cartoon|custom|readings|review-readings|write-script> <pid> <key> [sid] [--note "..."]
                                            In đúng prompt mà Claude API sẽ nhận cho việc này (làm theo prompt đó)
   prompt translate-subs <pid> <key> --lang en [--all]
                                            Prompt dịch phụ đề (chỉ câu còn thiếu bản dịch; --all: dịch lại mọi câu)
@@ -33,6 +33,7 @@ Xem
 Sửa
   set-design <pid> <key> <sid> <json-file|->  Ghi {"template","params","assumptions","alternatives","reason","confidence"} cho cảnh [--note "..."]
   set-svg <pid> <key> <sid> <svg-file|->      Ghi hình minh hoạ SVG cho cảnh illustration [--brief "..."]
+  set-cartoon <pid> <key> <sid> <js-file|->   Ghi mã cảnh hoạt hình vẽ tay (vẽ thử; in lỗi + ảnh khung để soát) [--note "..."]
   set-custom <pid> <key> <sid> <code-file|->  Ghi mã cảnh tùy biến (HyperFrames HTML / Remotion TSX), kiểm bằng lint [--note "..."]
   set-plan <pid> <fileId> <json-file|->     Ghi kế hoạch video của tài liệu {"videos":[…],"proposed":[…]} (kiểm như đường API)
   set-script <pid> <key> <json-file|->     Ghi kịch bản viết lại {"title","scenes":[{title,visual,onscreen,vo,seconds}],"assumptions"}
@@ -217,6 +218,22 @@ export async function main(argv: string[], io: Io): Promise<number> {
         const r = await setSvg(api, a[0], a[1], a[2], io.readFile(a[3]), flags.brief, flags.note);
         json(io, r);
         return 0;
+      }
+      case "set-cartoon": {
+        need(a, 4, "set-cartoon <pid> <key> <sid> <js-file|->");
+        const raw = io.readFile(a[3]);
+        // nhận cả câu trả lời đầy đủ (khối ```js + ```json) lẫn mã thuần
+        const code = raw.match(/```(?:js|javascript)\s*([\s\S]*?)```/)?.[1] ?? raw;
+        let assumptions: string[] | undefined;
+        try {
+          const j = raw.match(/```json\s*([\s\S]*?)```/)?.[1];
+          assumptions = j ? JSON.parse(j).assumptions : undefined;
+        } catch {
+          assumptions = undefined;
+        }
+        const r = await setCartoon(api, a[0], a[1], a[2], code, flags.note, assumptions);
+        json(io, r);
+        return (r as { ok?: boolean }).ok ? 0 : 1;
       }
       case "set-custom": {
         need(a, 4, "set-custom <pid> <key> <sid> <code-file|->");

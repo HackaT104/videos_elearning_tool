@@ -57,7 +57,20 @@ const norm = (s: string) =>
 
 /** Chữ trên màn hình không xuất hiện trong kịch bản (onscreen, lời thoại, tiêu đề, nguồn). */
 export function findUnsourcedTexts(video: Video, scene: Scene, texts: string[]): string[] {
-  const pool = norm([...scene.onscreen, ...scene.sentences.map((s) => s.text), scene.title, scene.visual, video.title, `Nguồn: ${video.sources ?? ""}`, video.context ?? ""].join(" \n "));
+  return notIn([...scene.onscreen, ...scene.sentences.map((s) => s.text), scene.title, scene.visual, video.title, `Nguồn: ${video.sources ?? ""}`, video.context ?? ""], texts);
+}
+
+/** Kịch bản có sẵn (không do AI viết): chữ trên màn hình chỉ theo kịch bản, chỉ đổi/thêm khi người duyệt yêu cầu. */
+export const scriptLocked = (video: Video) => !video.aiWritten;
+
+/** Chữ trên màn hình ngoài cột "chữ trên màn hình" (cùng chữ trích trong ngoặc ở mô tả hình, tên video, dòng nguồn). */
+export function findOffScriptTexts(video: Video, scene: Scene, texts: string[]): string[] {
+  const quoted = [...scene.visual.matchAll(/[«“"]([^«»“”"]{1,200})[»”"]/g)].map((m) => m[1]);
+  return notIn([...scene.onscreen, ...quoted, video.title, `Nguồn: ${video.sources ?? ""}`], texts);
+}
+
+function notIn(sources: string[], texts: string[]): string[] {
+  const pool = norm(sources.join(" \n "));
   return [...new Set(texts)].filter((t) => {
     const n = norm(t);
     if (!n || /^[\d\s]+$/.test(n)) return false;
@@ -100,7 +113,7 @@ export function buildSceneSpec(video: Video, scene: Scene, opts: { isLast?: bool
     spec.anims.push(fade(ctx, id, { cue: 0, f: 0.2 }, 0.6));
     spec.texts.push(text);
   }
-  const unsourced = template === "draft" ? [] : findUnsourcedTexts(video, scene, spec.texts);
+  const unsourced = template === "draft" ? [] : (scriptLocked(video) ? findOffScriptTexts : findUnsourcedTexts)(video, scene, spec.texts);
   const assumptions = [
     ...new Set([...(scene.assumptions ?? []), ...spec.assumptions, ...unsourced.map((t) => `Chữ không có trong kịch bản: «${t}»`)]),
   ];

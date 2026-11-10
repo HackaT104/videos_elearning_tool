@@ -102,6 +102,9 @@ export function compileScene(spec: SceneSpec, T: SceneTiming | SceneTimingLike, 
     (c) =>
       `tl.fromTo("#${c.id}", { textContent: ${c.from} }, { textContent: ${c.to}, duration: ${r(c.dur)}, ease: "${c.ease}", immediateRender: false, modifiers: { textContent: (v) => ${JSON.stringify(c.prefix ?? "")} + fmt(Number(v), ${c.decimals}) + ${JSON.stringify(c.suffix ?? "")} } }, ${timeExpr(c.at)});`,
   );
+  // clip hoạt hình vẽ tay: media có thời gian của cảnh (tính từ đầu cảnh), tắt tiếng – runtime HyperFrames tua theo khung
+  let clipN = 0;
+  const html = spec.html.replace(/<video class="cartoon-clip" data-cvs-clip="1"/g, () => `<video id="${sid}-clip${clipN++}" class="clip cartoon-clip" data-cvs-clip="1" data-start="0" data-duration="${r(T.dur)}" data-track-index="0"`);
   const visual = (meta.summary ?? meta.scene.visual).replace(/--/g, "–").replace(/\s+/g, " ").slice(0, 220);
   return `<!-- ${sid} · ${meta.scene.title.replace(/--/g, "–")} (kịch bản ${formatClock(meta.scene.scriptStart)}–${formatClock(meta.scene.scriptEnd)}) · template ${spec.template} · ${visual} -->
 <!-- TỰ SINH từ JSON kịch bản (${meta.videoKey}). Sửa thiết kế trong ứng dụng; khối TIMING được build cập nhật theo giọng thật. -->
@@ -113,7 +116,7 @@ ${wipeCss(spec.anims)}
 </style>
 <div id="root" data-composition-id="${sid}" data-width="1920" data-height="1080">
 <div id="${stage}" class="cvs-scene">
-${spec.html}
+${html}
 </div>
 </div>
 <script>

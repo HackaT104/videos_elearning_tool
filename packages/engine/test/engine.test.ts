@@ -47,6 +47,23 @@ describe("engine dùng chung", () => {
     const spec = buildSceneSpec(v, v.scenes[1]);
     expect(spec.assumptions.some((a) => a.includes("99%"))).toBe(true);
   });
+  it("kịch bản có sẵn: chép lời thoại lên màn hình là chữ ngoài kịch bản; kịch bản AI viết thì không", () => {
+    const v = buildVideo({ title: "Bài 1", fileName: "MO1_U1_1", scenes: [
+      { scriptStart: 0, scriptEnd: 10, title: "Mở", visual: 'Hiện chữ "Giảm phát thải"', onscreen: ["Tín chỉ carbon"], vo: "Thị trường carbon đang lớn dần." },
+    ] }, { course: "CAR", level: "L1" }, 0);
+    v.scenes[0].design = { template: "title-card", params: { kicker: "Giảm phát thải", title: "**Tín chỉ** carbon", subtitle: "Thị trường carbon đang lớn dần" }, by: "ai" };
+    const flagged = (x: typeof v) => buildSceneSpec(x, x.scenes[0]).assumptions.filter((a) => a.startsWith("Chữ không có"));
+    expect(flagged(v)).toEqual(["Chữ không có trong kịch bản: «Thị trường carbon đang lớn dần»"]);
+    expect(flagged({ ...v, aiWritten: true })).toEqual([]);
+  });
+  it("kịch bản có sẵn: thiết kế tự động không lấy lời thoại/tiêu đề cảnh làm chữ", () => {
+    const v = buildVideo({ title: "B", fileName: "MO1_U1_1", scenes: [
+      { scriptStart: 0, scriptEnd: 5, title: "a", visual: "Mở đầu và so sánh", onscreen: ["Mở"], vo: "Một." },
+      { scriptStart: 5, scriptEnd: 10, title: "Kết", visual: "", onscreen: [], vo: "Câu cuối." },
+    ] }, { course: "C", level: "L1" }, 0);
+    expect(autoDesign(v, v.scenes[1], 1).template).toBe("draft");
+    expect(autoDesign({ ...v, aiWritten: true }, v.scenes[1], 1).template).toBe("quote-banner");
+  });
   it("tham số sai → cảnh nháp + lỗi", () => {
     const v = buildVideo({ title: "B", fileName: "MO1_U1_1", scenes: [{ scriptStart: 0, scriptEnd: 5, title: "a", visual: "", onscreen: [], vo: "Một." }] }, { course: "C", level: "L1" }, 0);
     v.scenes[0].design = { template: "icon-grid", params: { items: [] }, by: "ai" };

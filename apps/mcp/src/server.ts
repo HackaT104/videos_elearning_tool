@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
-  apiBase, createApi, getPrompt, markRequest, pendingRequests, projectsView, qaReport, renderVideo, setCustomScene, setReading, setSceneDesign, setSubs, setSvg, startCheck,
+  apiBase, createApi, getPrompt, markRequest, pendingRequests, projectsView, qaReport, renderVideo, setCartoon, setCustomScene, setReading, setSceneDesign, setSubs, setSvg, startCheck,
   suggestReading, templatesView, videosView, videoView, vpath, enc, waitJob, type Api, type QaFrame,
 } from "../../../scripts/lib/cvs-api";
 import { toImageContent } from "./image";
@@ -39,7 +39,7 @@ const note = z.string().max(4000).optional().describe("Ghi chú/yêu cầu của
 const idx = z.number().int().min(0).describe("Số thứ tự câu trong cảnh (từ 0)");
 const jsonObj = z.record(z.string(), z.unknown());
 
-const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings", "analyze-doc", "write-script", "translate-subs", "style-gen"] as const;
+const PROMPT_KINDS = ["design", "illustration", "cartoon", "custom", "readings", "review-readings", "analyze-doc", "write-script", "translate-subs", "style-gen"] as const;
 
 /** Ảnh trong thư mục lưu trữ → nội dung ảnh MCP (thu nhỏ), kèm nhãn ngay trước mỗi ảnh. */
 async function images(api: Api, list: { file: string; label: string }[]): Promise<Content[]> {
@@ -106,6 +106,13 @@ export function createServer(opts: ServerOpts = {}) {
   }, (a) => run(() => setSceneDesign(api, a.projectId, a.videoKey, a.sceneId, { template: a.template, params: a.params, assumptions: a.assumptions, alternatives: a.alternatives, reason: a.reason, confidence: a.confidence }, a.note))());
   server.registerTool("set_svg", { title: "Ghi hình minh hoạ SVG", description: "Ghi SVG cho cảnh illustration (giữ các tham số khác). Cảnh chưa là illustration có brief → truyền brief (≤ 60 từ). SVG được lọc; cần ≥ 6 phần tử, ≥ 2 nhóm <g id=\"part-N\">, theo ILLUSTRATION_RULES trong prompt illustration.", inputSchema: { projectId: pid, videoKey: key, sceneId: sid, svg: z.string().min(1), brief: z.string().optional(), note } }, (a) =>
     run(() => setSvg(api, a.projectId, a.videoKey, a.sceneId, a.svg, a.brief, a.note))());
+  server.registerTool("set_cartoon", { title: "Ghi mã cảnh hoạt hình vẽ tay", description: "Việc cartoon: ghi mã cảnh hoạt hình (function scene(t) {...}) theo prompt cartoon. Máy chủ lint rồi VẼ THỬ vài khung và trả về ảnh các khung đó – nhìn kỹ (nhân vật đủ lớn, có sự kiện theo từng câu, không chữ trong hình, không lỗi vẽ) rồi sửa và ghi lại nếu cần. ok=false: sửa theo errors. Clip được vẽ khi check_video/render_video.", inputSchema: { projectId: pid, videoKey: key, sceneId: sid, code: z.string().min(1), assumptions: z.array(z.string()).optional(), note } }, (a) =>
+    run(async () => {
+      const r = await setCartoon(api, a.projectId, a.videoKey, a.sceneId, a.code, a.note, a.assumptions);
+      const frames = (r.frames ?? []).map((f: any) => ({ file: f.file, label: `Khung vẽ thử t = ${f.t} s` }));
+      const { frames: _f, ...rest } = r;
+      return { content: [text(rest), ...(await images(api, frames))], isError: !r.ok };
+    })());
   server.registerTool("set_custom_scene", { title: "Ghi cảnh tùy biến", description: "Ghi mã cảnh tùy biến theo engine của video (HyperFrames HTML hoặc Remotion TSX) – theo hợp đồng file trong prompt custom; phải qua lint.", inputSchema: { projectId: pid, videoKey: key, sceneId: sid, code: z.string().min(1), note } }, (a) =>
     run(() => setCustomScene(api, a.projectId, a.videoKey, a.sceneId, a.code, a.note))());
   server.registerTool("set_reading", { title: "Sửa cách đọc", description: "Sửa cách đọc một câu (khoá như sửa tay) – việc fix-readings. Truyền TOÀN BỘ câu đã sửa.", inputSchema: { projectId: pid, videoKey: key, sceneId: sid, idx, tts: z.string().min(1) } }, (a) =>
@@ -205,6 +212,7 @@ Theo kind:
 - revise (scene_id, note): get_prompt design + sceneId + note → set_scene_design (note). Cảnh đang "custom" → làm như custom-scene.
 - design-video: mỗi cảnh get_prompt design → set_scene_design; rồi check_video một lần.
 - illustration: set_scene_design template "illustration" với params.brief (≤ 60 từ), rồi get_prompt illustration → vẽ SVG → set_svg.
+- cartoon (dự án bật hoạt hình vẽ tay): cảnh chưa là cartoon → set_scene_design template "cartoon" với params.brief (≤ 80 từ, theo từng câu; chữ chỉ từ kịch bản). get_prompt cartoon (+ note) → viết mã → set_cartoon → nhìn ảnh khung vẽ thử, sửa tới khi đạt.
 - custom-scene: get_prompt custom (+ note) → viết mã theo hợp đồng file trong prompt → set_custom_scene.
 - fix-readings: list_readings(onlyWarnings) + get_prompt readings → set_reading từng câu (toàn bộ câu).
 - review-readings (video_key trống = mọi video): get_prompt review-readings, đọc TỪNG câu; câu cần đổi → suggest_reading (reason ngắn, glossary cho thuật ngữ lặp). Chỉ đề xuất. Không check/render.

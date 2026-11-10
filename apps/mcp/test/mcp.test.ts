@@ -12,7 +12,6 @@ process.env.CVS_STORAGE = storage;
 const { app } = await import("../../worker/src/api");
 const { createProject, getVideo, setVideoQa, updateJob, upsertVideo, addClaudeRequest, getClaudeRequest } = await import("@cvs/db");
 const { createNormalizer, makeSentences } = await import("@cvs/core");
-const { TEMPLATES } = await import("@cvs/engine");
 const { createServer } = await import("../src/server");
 const { createApi } = await import("../../../scripts/lib/cvs-api");
 
@@ -71,7 +70,7 @@ describe("máy chủ MCP course-video-studio", () => {
     expect(json(await call("list_videos", { projectId: pid }))[0].key).toBe(KEY);
     expect(json(await call("get_video", { projectId: pid, videoKey: KEY })).scenes[0].sentences[0].text).toMatch(/Thẩm định/);
     expect((await call("get_prompt", { kind: "design", projectId: pid, videoKey: KEY, sceneId: "s1" })).content[0].text).toMatch(/===== SYSTEM =====/);
-    const ok = json(await call("set_scene_design", { projectId: pid, videoKey: KEY, sceneId: "s1", template: "title-card", params: TEMPLATES["title-card"].example, reason: "Mở đầu" }));
+    const ok = json(await call("set_scene_design", { projectId: pid, videoKey: KEY, sceneId: "s1", template: "title-card", params: { title: getVideo(pid, KEY)!.data.title }, reason: "Mở đầu" }));
     expect(ok).toEqual({ ok: true, errors: [] });
     expect(getVideo(pid, KEY)!.data.scenes[0].design).toMatchObject({ template: "title-card", by: "ai" });
     const bad = await call("set_scene_design", { projectId: pid, videoKey: KEY, sceneId: "s1", template: "split-compare", params: {} });
@@ -96,5 +95,12 @@ describe("máy chủ MCP course-video-studio", () => {
     expect(r.content[r.content.indexOf(imgs[0]) - 1].text).toMatch(/cuối cảnh/);
     const all = await call("check_video", { projectId: pid, videoKey: KEY, rerun: false, allFrames: true });
     expect(all.content.filter((c) => c.type === "image")).toHaveLength(2);
+  });
+  it("set_cartoon: có trong danh sách; mã lỗi lint → isError + lỗi rõ (không vẽ thử)", async () => {
+    const { tools } = await client.listTools();
+    expect(tools.some((t) => t.name === "set_cartoon")).toBe(true);
+    const r = await call("set_cartoon", { projectId: pid, videoKey: KEY, sceneId: "s1", code: "function scene(t) { fetch('http://x') }" });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/cartoon|mạng/);
   });
 });

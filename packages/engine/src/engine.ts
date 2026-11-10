@@ -12,6 +12,8 @@ export type BuildInput = {
   workDir: string;
   /** Thư mục ảnh của dự án (mã ảnh = tên file); bộ dựng chép ảnh cảnh dùng vào workDir/assets/img. */
   assetsDir?: string;
+  /** Thư mục clip hoạt hình vẽ tay đã render của dự án (<mã>.mp4); bộ dựng chép clip cảnh dùng vào workDir/assets/cartoon. */
+  clipsDir?: string;
   /** Phụ đề gắn cứng + logo (đã kiểm); trống = không phủ gì. */
   overlay?: OverlaySettings;
 };

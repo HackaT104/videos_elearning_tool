@@ -148,7 +148,7 @@ describe("ảnh miễn phí có ghi nguồn", () => {
 
 describe("nhật ký quyết định qua Claude Code (set-design)", () => {
   it("nhận alternatives/reason/confidence, lọc template lạ; thiếu thì không có decision", async () => {
-    const tc = { title: "Mở đầu" };
+    const tc = { title: getVideo(pid, key)!.data.title }; // tên video: chữ có trong kịch bản
     const ok = await json("PATCH", `/projects/${pid}/videos/${encodeURIComponent(key)}/scenes/s1`, { design: { template: "title-card", params: tc, decision: { alternatives: ["kinetic-statement", "khong-co"], reason: "Cảnh mở đầu cần tiêu đề", confidence: 0.7 } }, by: "ai" });
     expect(ok.status).toBe(200);
     expect(getVideo(pid, key)!.data.scenes[0].design!.decision).toEqual({ template: "title-card", alternatives: ["kinetic-statement"], reason: "Cảnh mở đầu cần tiêu đề", confidence: 0.7, by: "claude-code" });

@@ -107,6 +107,10 @@ export type Video = {
   style: StyleId;
   /** Cặp phông chữ (mã trong @cvs/themes FONT_PAIRS); trống = phông của phong cách. */
   font?: string;
+  /** Skill dựng cảnh (mã trong thư viện skill, @cvs/studio skills); trống = cách dựng mặc định của ứng dụng. */
+  skill?: string;
+  /** Cho AI dùng cảnh hoạt hình vẽ tay (theo cài đặt dự án); clawd = được dùng nhân vật Clawd. Trống = tắt. */
+  cartoon?: { clawd?: boolean };
   engine: EngineId;
   voice: VoiceConfig;
   pace: Pace;

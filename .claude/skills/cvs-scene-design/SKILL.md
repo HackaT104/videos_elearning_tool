@@ -46,7 +46,8 @@ SceneSpec → GSAP `fromTo` (HyperFrames) và `interpolate` (Remotion) phải ra
 - [ ] Đa dạng cả video (tránh "trình chiếu"): không hai cảnh liền nhau cùng template; một template ≤ 40 % số cảnh; ít cảnh chỉ có chữ
       (title-card, quote-banner, kinetic-statement, term-define, checklist) khi nội dung vẽ được; cảnh ≥ 20 s cần ≥ 4 phần tử chuyển động.
       QA kiểm bằng `varietyQa` (`packages/qa/src/variety.ts`) và hiện ở bước Sản xuất.
-- [ ] Không bịa số; chữ tự thêm → `assumptions`. Dòng nguồn `.src-line` do engine tự thêm ở cảnh cuối (cảnh template) khi video có `sources` – đừng thêm trùng.
+- [ ] Cảnh hoạt hình vẽ tay (template `cartoon`, khi dự án bật): chỉ 1–3 khoảnh khắc cần cảm xúc/tình huống mỗi video; `brief` mô tả nhân vật làm gì ở từng câu; không chữ trong clip (chữ phủ theo kịch bản). Mã cảnh theo `packages/ai/src/cartoon.ts` (nguyên tắc + API kit).
+- [ ] Không bịa số; chữ tự thêm → `assumptions`. Kịch bản có sẵn: chữ trên màn hình chỉ theo cột "chữ trên màn hình" – không thêm, trừ khi ghi chú sửa yêu cầu. Dòng nguồn `.src-line` do engine tự thêm ở cảnh cuối (cảnh template) khi video có `sources` – đừng thêm trùng.
 
 ## Đồng bộ với prompt trong ứng dụng
 

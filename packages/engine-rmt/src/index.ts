@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeJsonAtomic, type OverlaySettings, type Timing, type Video } from "@cvs/core";
-import { assetExists, buildSceneSpec, dropMissingImages, IMG_DIR, overlaySpec, overlayWarnings, sceneImageRefs, scriptMarkdown, syncSceneImages, type BuildInput, type BuildResult, type LayoutIssue, type PreviewResult, type RenderEngine, type RenderProgress, type RenderResult } from "@cvs/engine";
+import { assetExists, buildSceneSpec, CLIP_DIR, dropMissingImages, IMG_DIR, overlaySpec, overlayWarnings, sceneClipRefs, sceneImageRefs, scriptMarkdown, syncSceneClips, syncSceneImages, type BuildInput, type BuildResult, type LayoutIssue, type PreviewResult, type RenderEngine, type RenderProgress, type RenderResult } from "@cvs/engine";
 import { baseCss, fontFaces, getTheme, groundHtml, SKETCH_FILTER_SVG } from "@cvs/themes";
 import { probe } from "@cvs/tts";
 import type { RmtProps } from "../remotion/types";
@@ -135,6 +135,8 @@ export async function rmtBuild(input: BuildInput): Promise<BuildResult> {
   // ảnh của dự án → assets/img (như giọng ở assets/vo); khi render, withBase đổi thành URL máy chủ tĩnh
   const refs = [...props.scenes, ...(props.overlay ? [props.overlay] : [])].flatMap((s) => sceneImageRefs(s.spec.html));
   for (const id of syncSceneImages(refs, input.assetsDir, input.workDir).missing) warnings.push(`Thiếu ảnh ${id} trong thư mục ảnh của dự án`);
+  const clipRefs = props.scenes.flatMap((s) => sceneClipRefs(s.spec.html));
+  for (const id of syncSceneClips(clipRefs, input.clipsDir, input.workDir).missing) warnings.push(`Thiếu clip hoạt hình ${id} – dựng lại cảnh để vẽ lại`);
   const assumptions: Record<string, string[]> = {};
   input.video.scenes.forEach((s, i) => {
     const spec = buildSceneSpec(input.video, s, { isLast: i === input.video.scenes.length - 1 });
@@ -151,7 +153,7 @@ export async function rmtBuild(input: BuildInput): Promise<BuildResult> {
 }
 
 function withBase(props: RmtProps, base: string): RmtProps {
-  const img = (s: RmtProps["scenes"][number]) => ({ ...s, spec: { ...s.spec, html: s.spec.html.replaceAll(` src="${IMG_DIR}`, ` src="${base}/${IMG_DIR}`) } });
+  const img = (s: RmtProps["scenes"][number]) => ({ ...s, spec: { ...s.spec, html: s.spec.html.replaceAll(` src="${IMG_DIR}`, ` src="${base}/${IMG_DIR}`).replaceAll(` src="${CLIP_DIR}`, ` src="${base}/${CLIP_DIR}`) } });
   return {
     ...props,
     scenes: props.scenes.map((s) => ({ ...img(s), audio: s.audio ? { ...s.audio, src: `${base}/${s.audio.src}` } : undefined })),

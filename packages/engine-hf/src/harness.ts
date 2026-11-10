@@ -38,11 +38,14 @@ export const HARNESS_JS = LAYOUT_PROBE_JS + String.raw`
       if (!window.__timelines || !window.__timelines[id]) errors.push(id + ": chưa đăng ký window.__timelines[\"" + id + "\"]");
     }
     await document.fonts.ready;
+    // clip hoạt hình: chờ có dữ liệu khung đầu (tua sau đó mới chính xác)
+    await Promise.all([...document.querySelectorAll("video[data-cvs-clip]")].map((v) => (v.readyState >= 2 ? Promise.resolve() : new Promise((r) => { v.addEventListener("loadeddata", r, { once: true }); v.addEventListener("error", () => { errors.push("Không nạp được clip " + v.getAttribute("src")); r(); }, { once: true }); v.load(); }))));
     // ảnh của dự án (assets/img): chờ giải mã xong để khung chụp đầu tiên không trống
     await Promise.all([...document.images].map((im) => (im.complete ? Promise.resolve() : new Promise((r) => { im.onload = im.onerror = r; })).then(() => im.decode && im.decode().catch(() => {}))));
   }
   function seek(t) {
     const hosts = [...document.querySelectorAll("[data-composition-src]")];
+    const waits = [];
     for (const host of hosts) {
       const id = host.getAttribute("data-composition-id");
       const start = Number(host.getAttribute("data-start"));
@@ -51,8 +54,13 @@ export const HARNESS_JS = LAYOUT_PROBE_JS + String.raw`
       host.style.visibility = on ? "visible" : "hidden";
       const tl = window.__timelines && window.__timelines[id];
       if (tl) tl.totalTime(Math.max(0, Math.min(dur, t - start)), true);
+      if (on) for (const v of host.querySelectorAll("video[data-cvs-clip]")) {
+        const want = Math.max(0, Math.min((v.duration || dur) - 0.001, t - start));
+        if (Math.abs(v.currentTime - want) > 0.0005) waits.push(new Promise((r) => { v.addEventListener("seeked", r, { once: true }); v.currentTime = want; }));
+      }
     }
     if (window.__timelines && window.__timelines.main) window.__timelines.main.totalTime(t, true);
+    return Promise.all(waits);
   }
   function layout(sceneId) {
     return window.__cvsLayout(document.getElementById(sceneId));

@@ -184,7 +184,7 @@ function safeUrl(u: string): string {
   return url.toString();
 }
 
-async function download(u: string, f: Fetch): Promise<Buffer> {
+export async function download(u: string, f: Fetch = fetch): Promise<Buffer> {
   const r = await f(safeUrl(u), { headers: { "User-Agent": STOCK_UA }, signal: AbortSignal.timeout(60_000) }).catch((e) => {
     throw new StockError(`Không tải được ảnh (${(e as Error).message})`);
   });

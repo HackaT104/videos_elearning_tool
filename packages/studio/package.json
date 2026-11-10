@@ -16,6 +16,7 @@
     "@cvs/engine": "workspace:*",
     "@cvs/engine-hf": "workspace:*",
     "@cvs/engine-rmt": "workspace:*",
+    "@cvs/engine-brush": "workspace:*",
     "@cvs/ai": "workspace:*",
     "@cvs/qa": "workspace:*",
     "@anthropic-ai/sdk": "^1.3.0",

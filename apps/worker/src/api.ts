@@ -16,7 +16,7 @@ import {
 } from "@cvs/db";
 import {
   AssetError, assetFile, deleteAsset, listAssets, MAX_ASSET_BYTES, saveAsset,
-  applySceneEdit, claudeCodePrompt, archiveItems, archiveSnapshots, deleteItems, claudeAuthStatus, claudeLogout, submitClaudeLoginCode, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
+  applySceneEdit, applyCartoonCode, cartoonSample, claudeCodePrompt, archiveItems, archiveSnapshots, deleteItems, claudeAuthStatus, claudeLogout, submitClaudeLoginCode, saveClaudeKey, startClaudeLogin, testClaude, cleanupCandidates, crossLevelWarnings, currentTiming, exportProject, ingestFile, listStylePreviews, openFolder, readingIssues, renormalizeProject, undoSceneDesign,
   acceptAllReadings, resolveReadingSuggestion, setReadingSuggestion, videoVtt, pickFolder, NoGuiError,
   claudeRunnerStatus, startClaudeRun, installClaudeCode, openClaudeLogin, claudeCodeSettings, setClaudeCodeSettings,
   applyDocPlan, docPlanView, saveDocPlan, saveScriptReply,
@@ -27,6 +27,7 @@ import {
 } from "@cvs/studio";
 import { overlayRoutes, overlayStale } from "./api-overlay";
 import { mediaRoutes } from "./api-media";
+import { skillError, skillRoutes } from "./api-skills";
 import { claudeDesktopRoutes } from "./claude-desktop";
 import {
   CIT_TERMS_URL, CitClient, citManagerState, ensureCitRunning, ensureZerottsRunning, installCit, installZerotts, restartCit, restartZerotts,
@@ -42,6 +43,7 @@ import { APP_VERSION, checkForUpdate, installUpdate, saveUpdateSettings, updateS
 const app = new Hono().basePath("/api");
 overlayRoutes(app);
 mediaRoutes(app);
+skillRoutes(app);
 claudeDesktopRoutes(app);
 
 app.onError((e, c) => c.json({ error: e.message }, 500));
@@ -207,6 +209,15 @@ app.get("/projects/:id", (c) => {
   if (!p) return c.json({ error: "Không tìm thấy dự án" }, 404);
   return c.json({ ...p, files: listFiles(p.id), warnings: crossLevelWarnings(p.id), out: paths.out(p.id) });
 });
+/** Cài đặt hoạt hình vẽ tay: {enabled, clawd?, quality?: "nhe" | "day-du"}. */
+function cartoonSettingsError(v: unknown): string | null {
+  if (v === undefined) return null;
+  const o = v as Record<string, unknown>;
+  if (!o || typeof o !== "object" || typeof o.enabled !== "boolean") return 'cartoon cần {"enabled": true|false}';
+  if (o.clawd !== undefined && typeof o.clawd !== "boolean") return "cartoon.clawd phải là true/false";
+  if (o.quality !== undefined && o.quality !== "nhe" && o.quality !== "day-du") return 'cartoon.quality phải là "nhe" hoặc "day-du"';
+  return Object.keys(o).every((k) => ["enabled", "clawd", "quality"].includes(k)) ? null : "cartoon có khoá lạ";
+}
 /** Phong cách được chọn phải có: sẵn có, hoặc tuỳ chỉnh của dự án / thư viện (chép vào dự án). Lỗi → thông báo, null = hợp lệ. */
 function styleError(pid: string, style: unknown): string | null {
   if (style === undefined || THEME_IDS.includes(style as never)) return null;
@@ -220,8 +231,9 @@ function styleError(pid: string, style: unknown): string | null {
 }
 app.patch("/projects/:id", async (c) => {
   const b = await c.req.json();
-  const bad = styleError(c.req.param("id"), b.settings?.style);
+  const bad = styleError(c.req.param("id"), b.settings?.style) ?? skillError(b.settings?.skill) ?? cartoonSettingsError(b.settings?.cartoon);
   if (bad) return c.json({ error: bad }, 400);
+  if (b.settings && "skill" in b.settings && !b.settings.skill) b.settings.skill = undefined;
   const p = updateProject(c.req.param("id"), b);
   if (b.applyToVideos) {
     for (const v of listVideos(p.id)) {
@@ -229,6 +241,7 @@ app.patch("/projects/:id", async (c) => {
       if (b.settings?.style) d.style = b.settings.style;
       if (b.settings?.engine) d.engine = b.settings.engine;
       if (b.settings && "font" in b.settings) d.font = b.settings.font && b.settings.font !== DEFAULT_FONT_PAIR ? b.settings.font : undefined;
+      if (b.settings && "skill" in b.settings) d.skill = b.settings.skill || undefined;
       upsertVideo(p.id, d);
     }
   }
@@ -493,6 +506,7 @@ const videoSummary = (projectId: string, v: ReturnType<typeof listVideos>[number
     engine: v.data.engine,
     style: v.data.style,
     font: v.data.font,
+    skill: v.data.skill ?? null,
     voice: v.data.voice,
     pace: v.data.pace,
     aiWritten: !!v.data.aiWritten,
@@ -517,8 +531,9 @@ app.put("/projects/:id/videos/:key", async (c) => {
   const id = c.req.param("id");
   const video = (await c.req.json()) as Video;
   if (video.key !== c.req.param("key")) return c.json({ error: "Mã video không khớp" }, 400);
-  const bad = styleError(id, video.style);
+  const bad = styleError(id, video.style) ?? skillError(video.skill);
   if (bad) return c.json({ error: bad }, 400);
+  if (!video.skill) delete video.skill;
   upsertVideo(id, video);
   setVideoFlags(id, video.key, { approved: false });
   return c.json({ ok: true });
@@ -714,7 +729,19 @@ app.post("/claude-code/settings", async (c) => {
   return c.json(s);
 });
 // Prompt đúng như Claude API nhận – Claude Code làm theo prompt này. "analyze-doc" dùng fileId (mã tài liệu) thay videoKey.
-const PROMPT_KINDS = ["design", "illustration", "custom", "readings", "review-readings", "analyze-doc", "write-script", "translate-subs", "style-gen"];
+const PROMPT_KINDS = ["design", "illustration", "cartoon", "custom", "readings", "review-readings", "analyze-doc", "write-script", "translate-subs", "style-gen"];
+// Vẽ thử cảnh hoạt hình mẫu theo cài đặt của dự án (xem nhân vật, đo tốc độ trên máy này)
+app.post("/projects/:id/cartoon/sample", async (c) => {
+  const p = getProject(c.req.param("id"));
+  if (!p) return c.json({ error: "Không tìm thấy dự án" }, 404);
+  return c.json(await cartoonSample(p.id, p.settings));
+});
+// Claude Code ghi mã cảnh hoạt hình (`pnpm cvs set-cartoon`): vẽ thử trước khi lưu, trả ảnh khung để soát
+app.post("/projects/:id/videos/:key/scenes/:sid/cartoon", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  // luôn 200 kèm ok: lỗi vẽ thử vẫn trả ảnh khung để Claude Code soát
+  return c.json(await applyCartoonCode(c.req.param("id"), c.req.param("key"), c.req.param("sid"), b));
+});
 app.post("/claude-code/prompt", async (c) => {
   const b = await c.req.json().catch(() => ({}));
   if (!PROMPT_KINDS.includes(b.kind)) return c.json({ error: `"kind" phải là ${PROMPT_KINDS.join(" | ")}` }, 400);

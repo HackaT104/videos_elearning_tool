@@ -2,7 +2,7 @@
 
 import parse, { attributesToProps, domToReact, Element, type DOMNode, type HTMLReactParserOptions } from "html-react-parser";
 import React, { useLayoutEffect, useMemo, useRef } from "react";
-import { Img, useCurrentFrame, useVideoConfig } from "remotion";
+import { Img, OffthreadVideo, useCurrentFrame, useVideoConfig } from "remotion";
 import { EXIT, LAYOUT_PROBE_JS, type Anim } from "@cvs/engine/browser";
 import { countText, propsAt, resolveAnims, styleOf } from "./anim";
 import type { RmtScene } from "./types";
@@ -28,6 +28,11 @@ export const SpecScene: React.FC<{ scene: RmtScene; probe?: boolean }> = ({ scen
         const anim = id ? resolved.get(id) : undefined;
         if (anim) props.style = { ...(props.style ?? {}), ...styleOf(propsAt(anim, t)) };
         return React.createElement(Img, props as any);
+      }
+      // clip hoạt hình vẽ tay (đã render trước): OffthreadVideo tua theo khung của Sequence cảnh, không tiếng
+      if (node.name === "video" && node.attribs["data-cvs-clip"]) {
+        const { style } = attributesToProps(node.attribs) as Record<string, any>;
+        return React.createElement(OffthreadVideo, { src: node.attribs.src, muted: true, style });
       }
       if (!id || (!resolved.has(id) && !counts.has(id))) return undefined;
       const props = attributesToProps(node.attribs) as Record<string, any>;

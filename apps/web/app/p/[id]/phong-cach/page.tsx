@@ -6,6 +6,8 @@ import { useProject, type VideoSum } from "@/lib/project";
 import { Badge, Msg, PageHead } from "@/components/ui";
 import { OverlaySettings } from "@/components/overlay-settings";
 import { StyleGen, type CustomRec, type CustomThemes } from "@/components/style-gen";
+import { SkillPicker, useSkills } from "@/components/skill-picker";
+import { CartoonSettings } from "@/components/cartoon-settings";
 
 type Theme = { id: string; name: string; description: string; dark: boolean; colors: Record<string, string>; fonts: { display: string; body: string; displayWeight: number }; custom?: "project" | "library" };
 const fromCustom = (r: CustomRec, custom: "project" | "library"): Theme => ({ id: r.id, name: r.theme.name, description: r.theme.description, dark: r.theme.dark, colors: r.theme.colors, fonts: { display: r.theme.fonts.display.family, body: r.theme.fonts.body.family, displayWeight: r.theme.fonts.display.weight }, custom });
@@ -19,6 +21,7 @@ export default function PhongCach() {
   const custom = useApi<CustomThemes>(`/projects/${pid}/themes`, 4000);
   const vids = useApi<VideoSum[]>(`/projects/${pid}/videos`, 5000);
   const styles = useApi<Styles>(`/projects/${pid}/styles`, 3000);
+  const skills = useSkills();
   const [sample, setSample] = useState<string>("");
   const [picked, setPicked] = useState<string | null>(null);
   const [zoom, setZoom] = useState<string | null>(null);
@@ -60,6 +63,11 @@ export default function PhongCach() {
       custom.reload();
     }, "Đã xoá phong cách");
   const setProject = (settings: Record<string, string>) => a.run(async () => { await api(`/projects/${pid}`, { method: "PATCH", json: { settings, applyToVideos: true } }); reload(); vids.reload(); }, "Đã áp dụng cho cả dự án");
+  const pickSkill = async (skill: string | null) => {
+    await api(`/projects/${pid}`, { method: "PATCH", json: { settings: { skill }, applyToVideos: true } });
+    reload();
+    vids.reload();
+  };
   const setVideo = (key: string, patch: Record<string, string>) =>
     a.run(async () => {
       const row = await api<any>(`/projects/${pid}/videos/${encodeURIComponent(key)}`);
@@ -81,6 +89,8 @@ export default function PhongCach() {
         {s.styleConfirmed ? <Badge tone="green">Đã chọn: {themeName(s.style)}</Badge> : <Badge tone="amber">Chưa chọn, bắt buộc trước khi sản xuất</Badge>}
       </PageHead>
       <Msg msg={a.msg} />
+      <SkillPicker current={s.skill ?? null} onUse={pickSkill} skills={skills} />
+      <CartoonSettings pid={pid} value={s.cartoon} onChange={async (cartoon) => { await api(`/projects/${pid}`, { method: "PATCH", json: { settings: { cartoon } } }); reload(); }} />
       <StyleGen pid={pid} ai={!!meta.data?.ai} data={custom.data} reload={custom.reload} shots={shots?.styles ?? []} previewBusy={busy} fonts={meta.data?.fonts ?? []} themeName={themeName}
         applied={s.styleConfirmed ? s.style : null} onApply={(id) => apply(id)} />
       <div className="card mb-4">
@@ -158,12 +168,13 @@ export default function PhongCach() {
       <div className="card overflow-x-auto">
         <h2 className="mb-2 text-base font-semibold">Đổi riêng từng video</h2>
         <table className="tbl">
-          <thead><tr><th>Video</th><th>Phong cách</th><th>Font chữ</th><th>Bộ dựng</th><th></th></tr></thead>
+          <thead><tr><th>Video</th><th>Phong cách</th><th>Skill dựng</th><th>Font chữ</th><th>Bộ dựng</th><th></th></tr></thead>
           <tbody>
             {vids.data?.filter((v) => v.include && !v.existing).map((v) => (
               <tr key={v.key}>
                 <td className="num text-[13px] font-medium">{v.key}</td>
                 <td><select className="input" value={v.style} onChange={(e) => setVideo(v.key, { style: e.target.value })}>{themes?.map((t) => <option key={t.id} value={t.id}>{t.custom ? `${t.name} (tuỳ chỉnh)` : t.name}</option>)}</select></td>
+                <td><select className="input" aria-label={`Skill dựng của ${v.key}`} value={v.skill ?? ""} onChange={(e) => setVideo(v.key, { skill: e.target.value })}><option value="">Mặc định</option>{skills.data?.skills.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</select></td>
                 <td><select className="input" value={v.font ?? "theo-phong-cach"} onChange={(e) => setVideo(v.key, { font: e.target.value === "theo-phong-cach" ? (undefined as unknown as string) : e.target.value })}><option value="theo-phong-cach">Theo phong cách</option>{meta.data?.fonts.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></td>
                 <td><select className="input" value={v.engine} onChange={(e) => setVideo(v.key, { engine: e.target.value })}><option value="hyperframes">HyperFrames</option><option value="remotion">Remotion</option></select></td>
                 <td><button className="btn" disabled={!v.rendered || a.busy} onClick={() => rerender(v)}>Dựng lại bằng bộ kia</button></td>

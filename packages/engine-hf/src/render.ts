@@ -7,7 +7,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Timing } from "@cvs/core";
 import type { RenderProgress, RenderResult } from "@cvs/engine";
-import { FFMPEG, ffmpeg, probe } from "@cvs/tts";
+import { delimiter } from "node:path";
+import { FFMPEG, FFPROBE, ffmpeg, probe } from "@cvs/tts";
 import { launchBrowser, openComposition, seek } from "./preview";
 
 const require = createRequire(import.meta.url);
@@ -33,7 +34,10 @@ export async function renderWithCli(workDir: string, outFile: string, opts: HfRe
   const bin = hyperframesBin();
   if (!bin) throw new Error("Chưa cài gói hyperframes");
   await new Promise<void>((resolve, reject) => {
-    const p = spawn(process.execPath, [bin, "render", "-o", outFile, "--crf", "18"], { cwd: workDir, env: { ...process.env, HYPERFRAMES_NO_UPDATE_CHECK: "1", CI: "1" }, windowsHide: true });
+    // cảnh có media (clip hoạt hình) → CLI cần ffmpeg/ffprobe trong PATH: dùng bản đi kèm ứng dụng
+    const binDirs = [FFMPEG, FFPROBE].filter((b) => /[\\/]/.test(b)).map((b) => dirname(b));
+    const PATH = [...new Set(binDirs), process.env.PATH ?? process.env.Path ?? ""].join(delimiter);
+    const p = spawn(process.execPath, [bin, "render", "-o", outFile, "--crf", "18"], { cwd: workDir, env: { ...process.env, PATH, Path: PATH, HYPERFRAMES_NO_UPDATE_CHECK: "1", CI: "1" }, windowsHide: true });
     let log = "";
     const onData = (d: Buffer) => {
       const s = d.toString();

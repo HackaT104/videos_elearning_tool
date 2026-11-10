@@ -58,7 +58,8 @@ const FORBIDDEN: [RegExp, string, string][] = [
   [/autoAlpha\s*:/g, "no-autoalpha", "Cấm tween autoAlpha (chỉ dùng opacity)"],
   [/\bvisibility\s*:\s*["'`]/g, "no-visibility", "Cấm tween visibility"],
   [/\bdisplay\s*:\s*["'`]/g, "no-display", "Cấm tween display"],
-  [/class\s*=\s*["'][^"']*\bclip\b/g, "no-clip-class", 'Cấm class="clip" bên trong cảnh'],
+  // ngoại lệ duy nhất: clip hoạt hình vẽ tay do build sinh (class="clip cartoon-clip" data-cvs-clip="1")
+  [/class\s*=\s*["'](?!clip cartoon-clip" data-cvs-clip="1")[^"']*\bclip\b/g, "no-clip-class", 'Cấm class="clip" bên trong cảnh'],
   [/\bfetch\s*\(|XMLHttpRequest|\bimport\s*\(/g, "no-network", "Cấm tải mạng trong cảnh"],
   [/\.play\s*\(\s*\)/g, "no-play", "Không gọi play() – runtime tự tua timeline"],
   [/(?:src|href)\s*=\s*["']https?:\/\//g, "no-external-asset", "Không dùng tài nguyên từ Internet/CDN khi render"],
@@ -102,7 +103,7 @@ export function lintScene(src: string, sceneId: string): LintIssue[] {
   for (const [re, rule, msg] of FORBIDDEN) for (const m of src.matchAll(re)) err(rule, msg, m.index);
   // tài nguyên chỉ được là ảnh của dự án, đường dẫn tương đối assets/img/<mã> (không tuyệt đối, không ../, không data:/file:)
   for (const m of src.matchAll(/(?<![\w-])src\s*=\s*(["']?)([^"'\s>]*)\1/gi))
-    if (!/^assets\/img\/[a-f0-9]{16}-\d{1,5}x\d{1,5}\.(?:png|jpg|webp|svg)$/.test(m[2]) && !/^https?:\/\//i.test(m[2]))
+    if (!/^assets\/img\/[a-f0-9]{16}-\d{1,5}x\d{1,5}\.(?:png|jpg|webp|svg)$/.test(m[2]) && !/^assets\/cartoon\/[a-f0-9]{16}\.mp4$/.test(m[2]) && !/^https?:\/\//i.test(m[2]))
       err("local-img-only", `src="${m[2].slice(0, 60)}" – chỉ dùng ảnh của dự án: src="assets/img/<mã ảnh>"`, m.index);
 
   // vị trí tween: phải đi qua at() hoặc T.dur; giây cứng chỉ cho phép < 1 s (tiêu đề)
